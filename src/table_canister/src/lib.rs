@@ -4994,7 +4994,7 @@ async fn update_btc_balance() -> Result<Vec<UtxoStatus>, String> {
     let subaccount = principal_to_subaccount(&caller);
     let args = UpdateBalanceArgs {
         owner: Some(ic_cdk::api::canister_self()),
-        subaccount: Some(subaccount),
+        subaccount: Some(subaccount.clone()),
     };
 
     #[derive(CandidType, Deserialize)]
@@ -5005,10 +5005,10 @@ async fn update_btc_balance() -> Result<Vec<UtxoStatus>, String> {
 
     let result: Result<(UpdateBalanceResult,), _> = ic_cdk::call(minter, "update_balance", (args,)).await;
 
-    match result {
-        Ok((UpdateBalanceResult::Ok(statuses),)) => Ok(statuses),
+    let statuses = match result {
+        Ok((UpdateBalanceResult::Ok(statuses),)) => statuses,
         Ok((UpdateBalanceResult::Err(err),)) => {
-            match err {
+            return match err {
                 UpdateBalanceError::NoNewUtxos { required_confirmations, pending_utxos } => {
                     if let Some(pending) = pending_utxos {
                         if !pending.is_empty() {
@@ -5033,10 +5033,64 @@ async fn update_btc_balance() -> Result<Vec<UtxoStatus>, String> {
                 UpdateBalanceError::GenericError { error_message, .. } => {
                     Err(format!("Error updating balance: {}", error_message))
                 },
-            }
+            };
         },
-        Err((code, msg)) => Err(format!("Failed to update balance: {:?} - {}", code, msg)),
+        Err((code, msg)) => return Err(format!("Failed to update balance: {:?} - {}", code, msg)),
+    };
+
+    // Sweep any minted ckBTC from the user's subaccount to the canister's main account
+    // and credit the user's internal BALANCES
+    let mut total_minted: u64 = 0;
+    for status in &statuses {
+        if let UtxoStatus::Minted { minted_amount, .. } = status {
+            total_minted = total_minted.saturating_add(*minted_amount);
+        }
     }
+
+    if total_minted > 0 {
+        let ckbtc_fee: u64 = 10; // 10 satoshis ckBTC transfer fee
+        let sweep_amount = total_minted.saturating_sub(ckbtc_fee);
+
+        if sweep_amount > 0 {
+            let ledger_id = currency.ledger_canister();
+            let subaccount_arr: [u8; 32] = subaccount.clone().try_into()
+                .unwrap_or([0u8; 32]);
+            let transfer_args = TransferArg {
+                from_subaccount: Some(subaccount_arr),
+                to: Account {
+                    owner: ic_cdk::api::canister_self(),
+                    subaccount: None,
+                },
+                amount: Nat::from(sweep_amount),
+                fee: Some(Nat::from(ckbtc_fee)),
+                memo: None,
+                created_at_time: Some(ic_cdk::api::time()),
+            };
+
+            let transfer_result: Result<(Result<Nat, TransferError>,), _> =
+                ic_cdk::call(ledger_id, "icrc1_transfer", (transfer_args,)).await;
+
+            match transfer_result {
+                Ok((Ok(_),)) => {
+                    // Credit the caller's escrow balance
+                    BALANCES.with(|b| {
+                        let mut balances = b.borrow_mut();
+                        let current = balances.get(&caller).copied().unwrap_or(0);
+                        balances.insert(caller, current.saturating_add(sweep_amount));
+                    });
+                    ic_cdk::println!("Swept {} sats ckBTC to main account for {}", sweep_amount, caller);
+                }
+                Ok((Err(e),)) => {
+                    ic_cdk::println!("WARNING: ckBTC sweep failed for {}: {:?}. Funds in subaccount.", caller, e);
+                }
+                Err((code, msg)) => {
+                    ic_cdk::println!("WARNING: ckBTC sweep call failed for {}: {:?} - {}", caller, code, msg);
+                }
+            }
+        }
+    }
+
+    Ok(statuses)
 }
 
 /// Arguments for retrieve_btc_with_approval call to ckBTC minter
