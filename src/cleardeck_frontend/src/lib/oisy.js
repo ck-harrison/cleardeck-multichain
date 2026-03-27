@@ -14,8 +14,8 @@
 import { writable, get } from 'svelte/store';
 import { IcpWallet } from '@dfinity/oisy-wallet-signer/icp-wallet';
 import { IcrcWallet } from '@dfinity/oisy-wallet-signer/icrc-wallet';
-import { Principal } from '@dfinity/principal';
-import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from '@icp-sdk/core';
+import { Actor, HttpAgent } from '@icp-sdk/core';
 import logger from './logger.js';
 
 // OISY Wallet URLs
@@ -64,7 +64,7 @@ function createOisyStore() {
 
             try {
                 const url = isMainnet() ? OISY_MAINNET_URL : OISY_STAGING_URL;
-                const host = isMainnet() ? 'https://icp-api.io' : 'http://localhost:4943';
+                const host = isMainnet() ? 'https://icp-api.io' : 'http://localhost:8000';
 
                 logger.info('Connecting to OISY wallet at:', url, 'with host:', host);
 
@@ -169,7 +169,7 @@ function createOisyStore() {
 
             try {
                 const url = isMainnet() ? OISY_MAINNET_URL : OISY_STAGING_URL;
-                const host = isMainnet() ? 'https://icp-api.io' : 'http://localhost:4943';
+                const host = isMainnet() ? 'https://icp-api.io' : 'http://localhost:8000';
 
                 logger.info('Connecting to OISY wallet (ICRC) at:', url, 'with host:', host);
 
@@ -305,7 +305,7 @@ function createOisyStore() {
 
             try {
                 // Create an anonymous agent for balance queries
-                const host = isMainnet() ? 'https://ic0.app' : 'http://127.0.0.1:4943';
+                const host = isMainnet() ? 'https://ic0.app' : 'http://127.0.0.1:8000';
                 const agent = new HttpAgent({ host });
 
                 if (!isMainnet()) {

@@ -59,7 +59,7 @@ cleardeck/
 │       │           ├── HandHistory.svelte
 │       │           └── ShuffleProof.svelte
 │       └── package.json
-├── dfx.json                         # Canister config & init args
+├── icp.yaml                         # Canister config & init args
 ├── Cargo.toml                       # Rust workspace
 └── Dockerfile                       # Reproducible builds
 ```
@@ -127,7 +127,7 @@ fn shuffle_deck(deck: &mut Vec<Card>, seed: &[u8]) {
 
 ---
 
-## Table Configuration (dfx.json)
+## Table Configuration (icp.yaml)
 
 ```json
 "table_1": {
@@ -206,20 +206,19 @@ verify_hand_shuffle : (hand_id: nat64) -> (Result<bool, text>);
 npm run build
 
 # Deploy to mainnet
-export DFX_WARNING=-mainnet_plaintext_identity
-dfx deploy frontend --network ic
+icp deploy frontend -e ic
 
 # Deploy specific canister
-dfx deploy table_1 --network ic
+icp deploy table_1 -e ic
 
 # Check table state
-dfx canister call table_1 get_public_state --network ic
+icp canister call table_1 get_public_state -e ic
 
 # Check player balances
-dfx canister call table_1 admin_get_all_balances --network ic
+icp canister call table_1 admin_get_all_balances -e ic
 
 # Update table config
-dfx canister call table_1 admin_update_config '(record { ... })' --network ic
+icp canister call table_1 admin_update_config '(record { ... })' -e ic
 
 # Hot reload frontend
 cd src/cleardeck_frontend && npm run dev
@@ -284,7 +283,7 @@ $effect(() => {
 
 ### Adding a New Table Type
 
-1. Add config in `dfx.json`:
+1. Add config in `icp.yaml`:
 ```json
 "table_4": {
   "candid": "src/table_canister/table_canister.did",
@@ -296,7 +295,7 @@ $effect(() => {
 
 2. Register in lobby after deploy:
 ```bash
-dfx canister call lobby register_table '(principal "<id>", record { ... })'
+icp canister call lobby register_table '(principal "<id>", record { ... })' -e ic
 ```
 
 ### Adding New Game Features
@@ -319,8 +318,8 @@ The table canister's `lib.rs` contains all game logic:
 ## Deployment Checklist
 
 - [ ] Build frontend: `npm run build`
-- [ ] Deploy: `dfx deploy frontend --network ic`
-- [ ] Check cycles: `dfx canister status <id> --network ic`
+- [ ] Deploy: `icp deploy frontend -e ic`
+- [ ] Check cycles: `icp canister status frontend -e ic`
 - [ ] Test authentication
 - [ ] Test deposit/withdraw flow
 - [ ] Monitor for errors

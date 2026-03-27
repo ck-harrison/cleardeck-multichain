@@ -12,8 +12,8 @@
   import { playSound, setSoundEnabled, isSoundEnabled } from "$lib/sounds.js";
   import logger from "$lib/logger.js";
   import { auth, isSignatureError, wallet } from "$lib/auth.js";
-  import { HttpAgent } from '@dfinity/agent';
-  import { Principal } from '@dfinity/principal';
+  import { HttpAgent } from '@icp-sdk/core';
+  import { Principal } from '@icp-sdk/core';
 
   let view = $state('lobby'); // 'lobby' | 'table'
   let tables = $state([]);
@@ -883,8 +883,8 @@
       <h3>1. Check Deployed Hash</h3>
       <p>Query the IC to see the hash of the deployed canister:</p>
       <div class="code-block">
-        <code>dfx canister info qrhly-eaaaa-aaaaj-qousa-cai --network ic</code>
-        <button class="copy-btn" onclick={() => navigator.clipboard.writeText('dfx canister info qrhly-eaaaa-aaaaj-qousa-cai --network ic')}>Copy</button>
+        <code>icp canister status lobby -e ic</code>
+        <button class="copy-btn" onclick={() => navigator.clipboard.writeText('icp canister status lobby -e ic')}>Copy</button>
       </div>
     </div>
 
@@ -904,7 +904,7 @@
 
     <div class="canister-ids">
       <h3>Deployed Canister Hashes</h3>
-      <p class="hash-note">Verify with: <code>dfx canister info &lt;ID&gt; --network ic</code></p>
+      <p class="hash-note">Verify with: <code>icp canister status &lt;name&gt; -e ic</code></p>
       <table>
         <tbody>
           <tr>

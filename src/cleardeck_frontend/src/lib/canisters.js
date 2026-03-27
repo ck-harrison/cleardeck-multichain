@@ -1,7 +1,7 @@
-import { Actor, HttpAgent } from "@dfinity/agent";
-import { idlFactory as lobbyIdlFactory } from 'declarations/lobby/lobby.did.js';
-import { idlFactory as tableIdlFactory } from 'declarations/table_1/table_1.did.js';
-import { idlFactory as historyIdlFactory } from 'declarations/history/history.did.js';
+import { safeGetCanisterEnv } from "@icp-sdk/core/agent/canister-env";
+import { createActor as createLobbyActor } from '../bindings/lobby_canister';
+import { createActor as createTableActor_ } from '../bindings/table_canister';
+import { createActor as createHistoryActor } from '../bindings/history_canister';
 import { building } from '$app/environment';
 import { auth } from './auth.js';
 
@@ -28,9 +28,11 @@ function withTimeout(promise, timeoutMs, errorMessage = 'Request timed out') {
 
 const buildingOrTesting = building || process.env.NODE_ENV === "test";
 
-// Canister IDs from environment
-export const lobbyCanisterId = import.meta.env.CANISTER_ID_LOBBY || process.env.CANISTER_ID_LOBBY;
-export const historyCanisterId = import.meta.env.CANISTER_ID_HISTORY || process.env.CANISTER_ID_HISTORY;
+// Read canister IDs from ic_env cookie (set by asset canister or dev server)
+const canisterEnv = typeof window !== 'undefined' ? safeGetCanisterEnv() : null;
+
+export const lobbyCanisterId = canisterEnv?.["PUBLIC_CANISTER_ID:lobby"];
+export const historyCanisterId = canisterEnv?.["PUBLIC_CANISTER_ID:history"];
 
 // Get current auth state
 function getAuthState() {
@@ -40,53 +42,42 @@ function getAuthState() {
     return state;
 }
 
-// Create an agent - uses authenticated identity if available, anonymous otherwise
-async function createAgent() {
-    // Detect if we're on mainnet by checking the hostname
-    // If the page is served from icp0.io, ic0.app, or internetcomputer.org, we're on mainnet
+// Build agentOptions for the current auth state
+function getAgentOptions() {
     const isMainnet = typeof window !== 'undefined' &&
         (window.location.hostname.includes('icp0.io') ||
          window.location.hostname.includes('ic0.app') ||
          window.location.hostname.includes('internetcomputer.org'));
 
-    const isLocal = !isMainnet;
-    const host = isLocal ? "http://127.0.0.1:4943" : "https://ic0.app";
-
+    const host = isMainnet ? "https://ic0.app" : window.location.origin;
     const authState = getAuthState();
 
     const agentOptions = {
         host,
-        // Disable query verification for now - there may be subnet key issues
         verifyQuerySignatures: false,
     };
 
-    // Use authenticated identity if available
     if (authState?.identity) {
         agentOptions.identity = authState.identity;
     }
 
-    const agent = new HttpAgent(agentOptions);
-
-    // Fetch root key for local development (required for certificate verification)
-    if (isLocal) {
-        await agent.fetchRootKey();
+    // Provide root key for local development
+    if (!isMainnet && canisterEnv?.IC_ROOT_KEY) {
+        agentOptions.rootKey = canisterEnv.IC_ROOT_KEY;
     }
 
-    return agent;
+    return agentOptions;
 }
 
 // Create actors that use the current authenticated identity
 // Each call creates a fresh actor to pick up identity changes
 // Includes network timeout handling to prevent hanging requests
-function createAuthenticatedActor(idlFactory, canisterId) {
+function createAuthenticatedActorProxy(createActorFn, canisterId) {
     return new Proxy({}, {
         get(target, prop) {
             return async (...args) => {
-                const agent = await createAgent();
-                const actor = Actor.createActor(idlFactory, {
-                    agent,
-                    canisterId,
-                });
+                const agentOptions = getAgentOptions();
+                const actor = createActorFn(canisterId, { agentOptions });
                 // Wrap the call with a timeout
                 return withTimeout(
                     actor[prop](...args),
@@ -101,24 +92,21 @@ function createAuthenticatedActor(idlFactory, canisterId) {
 // Lobby and history are static canisters
 export const lobby = buildingOrTesting
     ? dummyActor()
-    : createAuthenticatedActor(lobbyIdlFactory, lobbyCanisterId);
+    : createAuthenticatedActorProxy(createLobbyActor, lobbyCanisterId);
 
 export const history = buildingOrTesting
     ? dummyActor()
-    : createAuthenticatedActor(historyIdlFactory, historyCanisterId);
+    : createAuthenticatedActorProxy(createHistoryActor, historyCanisterId);
 
 // Table actor factory - creates an actor for a specific table canister
 // This is used when joining different tables that each have their own canister
-export async function createTableActor(tableCanisterId) {
+export function createTableActor(tableCanisterId) {
     if (buildingOrTesting) {
         return dummyActor();
     }
 
-    const agent = await createAgent();
-    return Actor.createActor(tableIdlFactory, {
-        agent,
-        canisterId: tableCanisterId,
-    });
+    const agentOptions = getAgentOptions();
+    return createTableActor_(tableCanisterId, { agentOptions });
 }
 
 // Create a proxy-style table actor that always uses the latest identity
@@ -129,21 +117,5 @@ export function createTableActorProxy(tableCanisterId) {
         return dummyActor();
     }
 
-    return new Proxy({}, {
-        get(target, prop) {
-            return async (...args) => {
-                const agent = await createAgent();
-                const actor = Actor.createActor(tableIdlFactory, {
-                    agent,
-                    canisterId: tableCanisterId,
-                });
-                // Wrap the call with a timeout
-                return withTimeout(
-                    actor[prop](...args),
-                    NETWORK_TIMEOUT_MS,
-                    `Network request timed out after ${NETWORK_TIMEOUT_MS / 1000}s`
-                );
-            };
-        }
-    });
+    return createAuthenticatedActorProxy(createTableActor_, tableCanisterId);
 }
