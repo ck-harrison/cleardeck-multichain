@@ -1,8 +1,8 @@
 <script>
   import { auth } from '$lib/auth.js';
   import { oisy, formatOisyBalance } from '$lib/oisy.js';
-  import { Actor } from '@dfinity/agent';
-  import { Principal } from '@dfinity/principal';
+  import { Actor } from '@icp-sdk/core';
+  import { Principal } from '@icp-sdk/core';
   import { onMount } from 'svelte';
   import IcpLogo from './IcpLogo.svelte';
 

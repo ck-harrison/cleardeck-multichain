@@ -2,8 +2,8 @@
   import { auth, wallet, formattedBalance } from '$lib/auth.js';
   import { oisy, formatOisyBalance } from '$lib/oisy.js';
   import { onMount } from 'svelte';
-  import { Principal } from '@dfinity/principal';
-  import { Actor, HttpAgent } from '@dfinity/agent';
+  import { Principal } from '@icp-sdk/core';
+  import { Actor, HttpAgent } from '@icp-sdk/core';
   import logger from '$lib/logger.js';
 
   // Props

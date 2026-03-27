@@ -163,7 +163,7 @@ You can verify that the deployed canisters match this source code:
 
 ```bash
 # Check the deployed WASM hash
-dfx canister info hnyty-pyaaa-aaaad-afzja-cai --network ic
+icp canister status lobby -e ic
 
 # Build locally and compare
 docker build -t cleardeck-verify .
@@ -174,7 +174,7 @@ docker run --rm cleardeck-verify
 
 1. **Get the deployed hash:**
    ```bash
-   dfx canister info <canister-id> --network ic | grep "Module hash"
+   icp canister status <canister-name> -e ic
    ```
 
 2. **Build from source in Docker:**
@@ -203,9 +203,9 @@ rustup target add wasm32-unknown-unknown
 nvm install 18 && nvm use 18
 ```
 
-**DFX (Internet Computer SDK)**
+**ICP CLI**
 ```bash
-sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+npm install -g @icp-sdk/icp-cli @icp-sdk/ic-wasm
 ```
 
 ### Quick Start
@@ -218,21 +218,21 @@ cd cleardeck-multichain
 # Install dependencies
 npm install
 
-# Start local replica
-dfx start --background
+# Start local network
+icp network start -d
 
 # Deploy everything
-dfx deploy
+icp deploy
 
-# Open the URL printed by dfx deploy
+# Frontend URL will be printed
 ```
 
 ### Development Mode (Hot Reload)
 
 ```bash
-# Terminal 1: Start replica and deploy backend
-dfx start --background
-dfx deploy lobby table_1 table_2 table_3 btc_table_1 eth_table_1 history
+# Terminal 1: Start local network and deploy backend
+icp network start -d
+icp deploy lobby table_1 table_2 table_3 btc_table_1 eth_table_1 history
 
 # Terminal 2: Start frontend dev server
 cd src/cleardeck_frontend
@@ -266,7 +266,7 @@ cleardeck-multichain/
 │               ├── Fireworks.svelte     # Winner animation (canvas)
 │               ├── RainCloud.svelte     # Loser animation (canvas)
 │               └── ...
-├── dfx.json                     # Canister configuration
+├── icp.yaml                     # Canister configuration
 ├── Cargo.toml                   # Rust workspace
 └── Dockerfile                   # Reproducible builds
 ```
@@ -344,54 +344,7 @@ Table Canister → ICRC-1 transfer → Player Wallet
 
 ## Table Configuration
 
-Defined in `dfx.json`:
-
-```json
-{
-  "table_1": {
-    "init_arg": "(record {
-      small_blind = 1000000 : nat64;      // 0.01 ICP
-      big_blind = 2000000 : nat64;        // 0.02 ICP
-      min_buy_in = 200000000 : nat64;     // 2 ICP
-      max_buy_in = 1000000000 : nat64;    // 10 ICP
-      max_players = 2 : nat8;             // Heads-up
-      currency = variant { ICP }
-    })"
-  }
-}
-```
-
-**BTC Table:**
-```json
-{
-  "btc_table_1": {
-    "init_arg": "(record {
-      small_blind = 100 : nat64;          // 100 sats
-      big_blind = 200 : nat64;            // 200 sats
-      min_buy_in = 10000 : nat64;         // 10,000 sats
-      max_buy_in = 100000 : nat64;        // 100,000 sats
-      max_players = 2 : nat8;
-      currency = variant { BTC }
-    })"
-  }
-}
-```
-
-**ETH Table:**
-```json
-{
-  "eth_table_1": {
-    "init_arg": "(record {
-      small_blind = 100000000000000 : nat64;      // 0.0001 ETH
-      big_blind = 200000000000000 : nat64;        // 0.0002 ETH
-      min_buy_in = 1000000000000000 : nat64;      // 0.001 ETH
-      max_buy_in = 10000000000000000 : nat64;     // 0.01 ETH
-      max_players = 2 : nat8;
-      currency = variant { ETH }
-    })"
-  }
-}
-```
+Defined in `icp.yaml` via `init_args`. See the config file for all table configurations (ICP, BTC, ETH, DOGE).
 
 ---
 
@@ -507,7 +460,7 @@ This project is designed to be forked, studied, and extended. **Everything was b
 | **Rust** | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
 | **Wasm target** | `rustup target add wasm32-unknown-unknown` |
 | **Node.js 18+** | `nvm install 18` |
-| **DFX SDK** | `sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"` |
+| **ICP CLI** | `npm install -g @icp-sdk/icp-cli @icp-sdk/ic-wasm` |
 | **Claude Code** | [Download](https://claude.ai/download) (optional, for AI development) |
 
 ### Continue Building with Claude Code

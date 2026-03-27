@@ -1,0 +1,77 @@
+canisters:
+  - name: lobby
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: lobby_canister
+        candid: src/lobby_canister/lobby_canister.did
+
+  - name: table_1
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: table_canister
+        candid: src/table_canister/table_canister.did
+    init_args:
+      text: '(record { small_blind = 1000000 : nat64; big_blind = 2000000 : nat64; min_buy_in = 200000000 : nat64; max_buy_in = 1000000000 : nat64; max_players = 2 : nat8; action_timeout_secs = 30 : nat64; ante = 0 : nat64; time_bank_secs = 30 : nat64; currency = variant { ICP } })'
+
+  - name: table_2
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: table_canister
+        candid: src/table_canister/table_canister.did
+    init_args:
+      text: '(record { small_blind = 5000000 : nat64; big_blind = 10000000 : nat64; min_buy_in = 1000000000 : nat64; max_buy_in = 5000000000 : nat64; max_players = 6 : nat8; action_timeout_secs = 45 : nat64; ante = 0 : nat64; time_bank_secs = 30 : nat64; currency = variant { ICP } })'
+
+  - name: table_3
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: table_canister
+        candid: src/table_canister/table_canister.did
+    init_args:
+      text: '(record { small_blind = 10000000 : nat64; big_blind = 20000000 : nat64; min_buy_in = 2000000000 : nat64; max_buy_in = 10000000000 : nat64; max_players = 9 : nat8; action_timeout_secs = 60 : nat64; ante = 0 : nat64; time_bank_secs = 30 : nat64; currency = variant { ICP } })'
+
+  - name: btc_table_1
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: table_canister
+        candid: src/table_canister/table_canister.did
+    init_args:
+      text: '(record { small_blind = 100 : nat64; big_blind = 200 : nat64; min_buy_in = 10000 : nat64; max_buy_in = 100000 : nat64; max_players = 2 : nat8; action_timeout_secs = 30 : nat64; ante = 0 : nat64; time_bank_secs = 30 : nat64; currency = variant { BTC } })'
+
+  - name: eth_table_1
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: table_canister
+        candid: src/table_canister/table_canister.did
+    init_args:
+      text: '(record { small_blind = 50000000000000 : nat64; big_blind = 100000000000000 : nat64; min_buy_in = 1000000000000000 : nat64; max_buy_in = 100000000000000000 : nat64; max_players = 2 : nat8; action_timeout_secs = 30 : nat64; ante = 0 : nat64; time_bank_secs = 30 : nat64; currency = variant { ETH } })'
+
+  - name: doge_table_1
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: table_canister
+        candid: src/table_canister/table_canister.did
+    init_args:
+      text: '(record { small_blind = 1000000000 : nat64; big_blind = 2000000000 : nat64; min_buy_in = 50000000000 : nat64; max_buy_in = 500000000000 : nat64; max_players = 2 : nat8; action_timeout_secs = 30 : nat64; ante = 0 : nat64; time_bank_secs = 30 : nat64; currency = variant { DOGE } })'
+
+  - name: history
+    recipe:
+      type: "@dfinity/rust@v3.2.0"
+      configuration:
+        package: history_canister
+        candid: src/history_canister/history_canister.did
+
+  - name: frontend
+    recipe:
+      type: "@dfinity/asset-canister@v2.1.0"
+      configuration:
+        dir: src/cleardeck_frontend/dist
+        build:
+          - npm install --prefix src/cleardeck_frontend
+          - npm run build --prefix src/cleardeck_frontend

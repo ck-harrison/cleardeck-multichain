@@ -9,10 +9,10 @@ cargo test --workspace
 
 ## Integration Tests
 
-Integration tests require a local IC replica:
+Integration tests require a local network:
 ```bash
-# Start local replica
-dfx start --background
+# Start local network
+icp network start -d
 
 # Run integration tests
 cargo test --package table_canister --test integration_test
@@ -22,8 +22,8 @@ cargo test --package table_canister --test integration_test
 
 End-to-end tests require the full stack:
 ```bash
-# Deploy to local replica
-dfx deploy
+# Deploy to local network
+icp deploy
 
 # Run E2E tests (when implemented)
 npm test

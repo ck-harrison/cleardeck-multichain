@@ -14,9 +14,8 @@ const isDevelopment = (() => {
       return true;
     }
   }
-  // Fall back to environment checks - only enable dev logging if explicitly local
-  return import.meta.env.DFX_NETWORK === 'local' ||
-         import.meta.env.MODE === 'development';
+  // Fall back to environment checks
+  return import.meta.env.MODE === 'development';
 })();
 
 // Error tracking service (can be integrated with Sentry, etc.)
