@@ -29,7 +29,7 @@ echo ""
 declare -A DEPLOYED_HASHES
 for name in "${!CANISTERS[@]}"; do
     id="${CANISTERS[$name]}"
-    hash=$(dfx canister info "$id" --network ic 2>/dev/null | grep "Module hash:" | awk '{print $3}' || echo "error")
+    hash=$(icp canister status "$name" -e ic 2>/dev/null | grep "Module hash:" | awk '{print $3}' || echo "error")
     DEPLOYED_HASHES[$name]="$hash"
     echo "  $name ($id): $hash"
 done

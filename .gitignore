@@ -7,11 +7,14 @@
 .DS_Store
 **/.DS_Store
 
-# dfx temporary files
+# icp-cli cache (ephemeral, rebuilt automatically)
+.icp/cache/
+
+# legacy dfx cache
 .dfx/
 
-# generated files
-**/declarations/
+# generated TypeScript bindings
+**/src/bindings/
 
 # rust
 target/

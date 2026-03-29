@@ -1,8 +1,9 @@
 import { writable, derived } from 'svelte/store';
 import { AuthClient } from '@dfinity/auth-client';
-import { HttpAgent, Actor } from '@dfinity/agent';
-import { Principal } from '@dfinity/principal';
+import { HttpAgent, Actor } from '@icp-sdk/core';
+import { Principal } from '@icp-sdk/core';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
+import { safeGetCanisterEnv } from '@icp-sdk/core/agent/canister-env';
 import { idlFactory as ledgerIdlFactory } from './ledger.did.js';
 import logger from './logger.js';
 
@@ -117,8 +118,10 @@ function createAuthStore() {
 
                     // Use local II for local dev, production II for mainnet
                     const isLocal = !isMainnetHostname();
+                    const canisterEnv = safeGetCanisterEnv();
+                    const iiCanisterId = canisterEnv?.["PUBLIC_CANISTER_ID:internet_identity"] || 'rdmx6-jaaaa-aaaaa-aaadq-cai';
                     const identityProvider = isLocal
-                        ? `http://${import.meta.env.CANISTER_ID_INTERNET_IDENTITY}.localhost:4943`
+                        ? `http://${iiCanisterId}.localhost:8000`
                         : 'https://identity.internetcomputer.org';
 
                     state.authClient.login({
@@ -195,7 +198,7 @@ function createAuthStore() {
                     }
 
                     const isLocal = !isMainnetHostname();
-                    const host = isLocal ? 'http://127.0.0.1:4943' : 'https://ic0.app';
+                    const host = isLocal ? 'http://127.0.0.1:8000' : 'https://ic0.app';
 
                     const agent = new HttpAgent({
                         host,
@@ -257,7 +260,6 @@ function createWalletStore() {
 
     // ICP Ledger canister ID
     const LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';  // Mainnet ICP ledger
-    const LOCAL_LEDGER_ID = import.meta.env.CANISTER_ID_LEDGER || LEDGER_CANISTER_ID;
 
     return {
         subscribe,
@@ -268,10 +270,12 @@ function createWalletStore() {
             try {
                 const agent = await auth.getAgent();
                 const isLocal = !isMainnetHostname();
-                const ledgerId = isLocal ? LOCAL_LEDGER_ID : LEDGER_CANISTER_ID;
+                const walletCanisterEnv = safeGetCanisterEnv();
+                const localLedgerId = walletCanisterEnv?.["PUBLIC_CANISTER_ID:ledger"] || LEDGER_CANISTER_ID;
+                const ledgerId = isLocal ? localLedgerId : LEDGER_CANISTER_ID;
 
                 // Skip balance fetch if no local ledger is configured
-                if (isLocal && !import.meta.env.CANISTER_ID_LEDGER) {
+                if (isLocal && !walletCanisterEnv?.["PUBLIC_CANISTER_ID:ledger"]) {
                     set({
                         balance: BigInt(0),
                         isLoading: false,
