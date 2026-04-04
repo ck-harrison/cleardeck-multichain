@@ -894,8 +894,8 @@
       <h3>2. Build from Source</h3>
       <p>Clone the repo and build in Docker to get the source hash:</p>
       <div class="code-block">
-        <code>git clone https://github.com/JoshDFN/cleardeck<br/>cd cleardeck<br/>docker build -t verify .</code>
-        <button class="copy-btn" onclick={() => navigator.clipboard.writeText('git clone https://github.com/JoshDFN/cleardeck && cd cleardeck && docker build -t verify .')}>Copy</button>
+        <code>git clone https://github.com/ck-harrison/cleardeck-multichain<br/>cd cleardeck<br/>docker build -t verify .</code>
+        <button class="copy-btn" onclick={() => navigator.clipboard.writeText('git clone https://github.com/ck-harrison/cleardeck-multichain && cd cleardeck && docker build -t verify .')}>Copy</button>
       </div>
     </div>
 
@@ -911,31 +911,31 @@
         <tbody>
           <tr>
             <td>Lobby</td>
-            <td><code class="canister-id">kpfcd-kyaaa-aaaaj-qor3a-cai</code></td>
+            <td><code class="canister-id">hnyty-pyaaa-aaaad-afzja-cai</code></td>
           </tr>
           <tr>
-            <td colspan="2" class="hash-row"><code class="hash">0xff6c893de860c5bd8dae85d67344ee94619fb6faad6d68b3265c9a6fe5a2cef8</code></td>
+            <td colspan="2" class="hash-row"><code class="hash">Verify with: icp canister status lobby -e ic</code></td>
           </tr>
           <tr>
             <td>Tables (all)</td>
-            <td><code class="canister-id">kieex..., lfkaz..., lclgn..., qrhly...</code></td>
+            <td><code class="canister-id">hkzvm..., h76eb..., hy7cv..., f6hqy..., ghxrc..., 52zr7...</code></td>
           </tr>
           <tr>
-            <td colspan="2" class="hash-row"><code class="hash">0x1b84e2fa1c35fd50001cb059ba644784fe5a6b36a093a2ac3e56c39bc3bbdf28</code></td>
+            <td colspan="2" class="hash-row"><code class="hash">Verify with: icp canister status table_1 -e ic</code></td>
           </tr>
           <tr>
             <td>History</td>
-            <td><code class="canister-id">kggj7-4qaaa-aaaaj-qor2q-cai</code></td>
+            <td><code class="canister-id">he3ye-zqaaa-aaaad-afziq-cai</code></td>
           </tr>
           <tr>
-            <td colspan="2" class="hash-row"><code class="hash">0xc9b1b78a6490cd2034b967dc9de11bb6377170e0e5ef96144b546da3a93dd8f9</code></td>
+            <td colspan="2" class="hash-row"><code class="hash">Verify with: icp canister status history -e ic</code></td>
           </tr>
         </tbody>
       </table>
       <p class="hash-note">All table canisters use the same WASM (same hash).</p>
     </div>
 
-    <a href="https://github.com/JoshDFN/cleardeck" target="_blank" rel="noopener" class="github-link">
+    <a href="https://github.com/ck-harrison/cleardeck-multichain" target="_blank" rel="noopener" class="github-link">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
       </svg>

@@ -131,6 +131,7 @@ Every shuffle uses a commit-reveal scheme:
 | Table 3 | `hy7cv-oqaaa-aaaad-afzkq-cai` | 9-max 0.10/0.20 ICP |
 | BTC Table | `f6hqy-haaaa-aaaad-afzhq-cai` | Heads-up 100/200 sats |
 | ETH Table | `ghxrc-niaaa-aaaad-afzoa-cai` | Heads-up 0.0001/0.0002 ETH |
+| DOGE Table | `52zr7-xiaaa-aaaad-af4bq-cai` | Heads-up 10/20 DOGE |
 
 ---
 

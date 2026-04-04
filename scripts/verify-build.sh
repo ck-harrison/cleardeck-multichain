@@ -1,5 +1,5 @@
 #!/bin/bash
-# GitHub: https://github.com/JoshDFN/cleardeck
+# GitHub: https://github.com/ck-harrison/cleardeck-multichain
 # Verify that deployed canisters match the source code
 #
 # This script:
