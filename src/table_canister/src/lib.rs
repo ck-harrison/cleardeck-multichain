@@ -1508,6 +1508,32 @@ async fn claim_external_deposit() -> Result<u64, String> {
     if caller == Principal::anonymous() {
         return Err("Anonymous callers cannot claim deposits".to_string());
     }
+
+    // Rate limit deposit claims (5 per minute per user)
+    let now = ic_cdk::api::time();
+    let rate_limited = DEPOSIT_RATE_LIMITS.with(|r| {
+        let mut limits = r.borrow_mut();
+        let minute_ns: u64 = 60_000_000_000;
+        if let Some((window_start, count)) = limits.get_mut(&caller) {
+            if now > *window_start + minute_ns {
+                *window_start = now;
+                *count = 1;
+                false
+            } else if *count >= MAX_DEPOSIT_VERIFICATIONS_PER_MINUTE {
+                true
+            } else {
+                *count += 1;
+                false
+            }
+        } else {
+            limits.insert(caller, (now, 1));
+            false
+        }
+    });
+    if rate_limited {
+        return Err("Too many deposit claim attempts. Please wait a minute.".to_string());
+    }
+
     let canister = canister_id();
     let currency = get_table_currency();
     let ledger_id = currency.ledger_canister();
@@ -1963,6 +1989,7 @@ fn buy_in(seat: u8, amount: u64) -> Result<(), String> {
     if caller == Principal::anonymous() {
         return Err("Anonymous callers cannot perform this action".to_string());
     }
+    check_rate_limit()?;
 
     // Check escrow balance
     let balance = BALANCES.with(|b| {
@@ -2067,6 +2094,7 @@ fn reload(amount: u64) -> Result<u64, String> {
     if caller == Principal::anonymous() {
         return Err("Anonymous callers cannot perform this action".to_string());
     }
+    check_rate_limit()?;
 
     let currency = get_table_currency();
     // Check escrow balance (atomic check and deduct)
@@ -2138,6 +2166,7 @@ fn cash_out() -> Result<u64, String> {
     if caller == Principal::anonymous() {
         return Err("Anonymous callers cannot perform this action".to_string());
     }
+    check_rate_limit()?;
 
     // Check if player is in a hand
     let in_hand = TABLE.with(|t| {
@@ -5602,7 +5631,7 @@ fn encode_deposit_calldata(principal: &Principal) -> Vec<u8> {
 }
 
 /// Determine y-parity of ECDSA signature for Ethereum
-fn y_parity(prehash: &[u8; 32], sig: &[u8; 64], pubkey: &[u8]) -> u64 {
+fn y_parity(prehash: &[u8; 32], sig: &[u8; 64], pubkey: &[u8]) -> Result<u64, String> {
     let orig_key = VerifyingKey::from_sec1_bytes(pubkey)
         .expect("failed to parse public key");
     let signature = K256Signature::try_from(sig.as_slice())
@@ -5611,12 +5640,13 @@ fn y_parity(prehash: &[u8; 32], sig: &[u8; 64], pubkey: &[u8]) -> u64 {
         let recid = RecoveryId::new(parity, false);
         if let Ok(recovered) = VerifyingKey::recover_from_prehash(prehash, &signature, recid) {
             if recovered == orig_key {
-                return parity as u64;
+                return Ok(parity as u64);
             }
         }
     }
-    panic!("unable to determine y parity");
+    Err("unable to determine y parity from signature".to_string())
 }
+
 
 // --- ECDSA calls to management canister ---
 
@@ -5817,7 +5847,7 @@ async fn build_and_sign_sweep_tx(
     // Determine y-parity
     let mut sig_array = [0u8; 64];
     sig_array.copy_from_slice(&signature_bytes[..64]);
-    let v = y_parity(&sig_hash_bytes, &sig_array, pubkey);
+    let v = y_parity(&sig_hash_bytes, &sig_array, pubkey)?;
 
     // Create the alloy Signature
     let r = U256::from_be_slice(&signature_bytes[..32]);
