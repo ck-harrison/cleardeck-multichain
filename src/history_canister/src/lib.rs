@@ -507,6 +507,19 @@ mod hex {
 }
 
 // ============================================================================
+// INGRESS GUARD
+// ============================================================================
+
+#[ic_cdk::inspect_message]
+fn inspect_message() {
+    let caller = ic_cdk::api::msg_caller();
+    if caller == Principal::anonymous() {
+        ic_cdk::trap("Anonymous calls not allowed");
+    }
+    ic_cdk::api::call::accept_message();
+}
+
+// ============================================================================
 // UPGRADE HOOKS - Persist state across upgrades
 // ============================================================================
 
@@ -537,8 +550,7 @@ fn pre_upgrade() {
     });
 
     if let Err(e) = ic_cdk::storage::stable_save((state,)) {
-        ic_cdk::println!("CRITICAL: Failed to save state to stable memory: {:?}", e);
-        // Log but don't panic - allow upgrade to proceed
+        panic!("CRITICAL: Failed to save state to stable memory: {:?}. Rejecting upgrade to preserve running state.", e);
     }
 }
 

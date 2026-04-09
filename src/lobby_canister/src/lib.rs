@@ -170,10 +170,14 @@ fn set_admin(new_admin: Principal) -> Result<(), String> {
     Ok(())
 }
 
-/// Get admin principal (query)
+/// Get admin principal (controller-only query)
 #[ic_cdk::query]
-fn get_admin() -> Option<Principal> {
-    ADMIN.with(|a| *a.borrow())
+fn get_admin() -> Result<Option<Principal>, String> {
+    let caller = ic_cdk::api::msg_caller();
+    if !ic_cdk::api::is_controller(&caller) && !is_admin() {
+        return Err("Unauthorized: admin or controller only".to_string());
+    }
+    Ok(ADMIN.with(|a| *a.borrow()))
 }
 
 /// Initialize default tables - call this after deploying table canisters
@@ -619,6 +623,9 @@ fn update_table_name(table_id: u64, new_name: String) -> Result<(), String> {
     if !is_admin() {
         return Err("Unauthorized: admin only".to_string());
     }
+    if new_name.len() > 100 {
+        return Err("Table name too long (max 100 characters)".to_string());
+    }
 
     TABLES.with(|tables| {
         let mut tables = tables.borrow_mut();
@@ -925,6 +932,19 @@ fn get_authorized_tables() -> Vec<Principal> {
 }
 
 // ============================================================================
+// INGRESS GUARD
+// ============================================================================
+
+#[ic_cdk::inspect_message]
+fn inspect_message() {
+    let caller = ic_cdk::api::msg_caller();
+    if caller == Principal::anonymous() {
+        ic_cdk::trap("Anonymous calls not allowed");
+    }
+    ic_cdk::api::call::accept_message();
+}
+
+// ============================================================================
 // UPGRADE HOOKS - Persist state across upgrades
 // ============================================================================
 
@@ -949,9 +969,7 @@ fn pre_upgrade() {
     };
 
     if let Err(e) = ic_cdk::storage::stable_save((state,)) {
-        ic_cdk::println!("CRITICAL: Failed to save state to stable memory: {:?}", e);
-        // Log but don't panic - allow upgrade to proceed with potential data loss
-        // This is safer than trapping which could brick the canister
+        panic!("CRITICAL: Failed to save state to stable memory: {:?}. Rejecting upgrade to preserve running state.", e);
     }
 }
 
