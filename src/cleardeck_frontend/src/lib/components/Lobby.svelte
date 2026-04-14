@@ -320,7 +320,7 @@
             {@const currency = getTableCurrency(table)}
             {@const isFull = table.player_count >= table.config.max_players}
             {@const fillPercent = (table.player_count / table.config.max_players) * 100}
-            <tr class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:full={isFull} onclick={() => onJoinTable(table)}>
+            <tr class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:doge={currency === 'DOGE'} class:full={isFull} onclick={() => onJoinTable(table)}>
               <td class="col-game">
                 <div class="game-info">
                   <span class="table-name">{table.name}</span>
@@ -348,7 +348,7 @@
                 </div>
               </td>
               <td class="col-stakes">
-                <span class="stakes-value" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'}>
+                <span class="stakes-value" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:doge={currency === 'DOGE'}>
                   {formatBlinds(table.config.small_blind, table.config.big_blind, currency)}
                 </span>
                 <span class="stakes-unit" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:doge={currency === 'DOGE'}>
@@ -373,7 +373,7 @@
               <td class="col-players">
                 <div class="players-cell">
                   <div class="players-bar">
-                    <div class="players-fill" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} style:width="{fillPercent}%"></div>
+                    <div class="players-fill" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:doge={currency === 'DOGE'} style:width="{fillPercent}%"></div>
                   </div>
                   <span class="players-text">
                     <strong>{table.player_count}</strong>/{table.config.max_players}
@@ -411,7 +411,7 @@
                 </span>
               </td>
               <td class="col-action">
-                <button class="join-btn" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} disabled={isFull}>
+                <button class="join-btn" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:doge={currency === 'DOGE'} disabled={isFull}>
                   {#if isFull}
                     Full
                   {:else}
@@ -465,7 +465,7 @@
             </div>
 
             <div class="card-body">
-              <div class="blinds-display" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'}>
+              <div class="blinds-display" class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:doge={currency === 'DOGE'}>
                 <span class="blinds-value">
                   {formatBlinds(tableInfo.config.small_blind, tableInfo.config.big_blind, currency)}
                 </span>
@@ -490,7 +490,7 @@
               <!-- Player slots visualization -->
               <div class="seats-visual">
                 {#each Array(Number(tableInfo.config.max_players)) as _, i}
-                  <div class="seat" class:occupied={i < tableInfo.player_count} class:btc={currency === 'BTC'} class:eth={currency === 'ETH'}></div>
+                  <div class="seat" class:occupied={i < tableInfo.player_count} class:btc={currency === 'BTC'} class:eth={currency === 'ETH'} class:doge={currency === 'DOGE'}></div>
                 {/each}
               </div>
             </div>
@@ -500,6 +500,7 @@
                 class="join-btn-card"
                 class:btc={currency === 'BTC'}
                 class:eth={currency === 'ETH'}
+                class:doge={currency === 'DOGE'}
                 disabled={isFull}
               >
                 {#if isFull}
@@ -772,6 +773,10 @@
     background: rgba(98, 126, 234, 0.05);
   }
 
+  .tables-list tbody tr.doge:hover {
+    background: rgba(194, 166, 51, 0.05);
+  }
+
   .tables-list tbody tr.full {
     opacity: 0.6;
   }
@@ -880,6 +885,10 @@
     color: #627EEA;
   }
 
+  .stakes-value.doge {
+    color: #C2A633;
+  }
+
   .stakes-unit {
     display: inline-flex;
     align-items: center;
@@ -895,6 +904,10 @@
 
   .stakes-unit.eth {
     color: #627EEA;
+  }
+
+  .stakes-unit.doge {
+    color: #C2A633;
   }
 
   /* Buy-in unit */
@@ -913,6 +926,10 @@
 
   .buyin-unit.eth {
     color: #627EEA;
+  }
+
+  .buyin-unit.doge {
+    color: #C2A633;
   }
 
   /* Players */
@@ -940,6 +957,10 @@
 
   .players-fill.btc {
     background: linear-gradient(90deg, #f7931a, #c77700);
+  }
+
+  .players-fill.doge {
+    background: linear-gradient(90deg, #C2A633, #a08928);
   }
 
   .players-fill.eth {
@@ -1010,6 +1031,10 @@
     background: linear-gradient(135deg, #627EEA 0%, #4a5fc7 100%);
   }
 
+  .join-btn.doge {
+    background: linear-gradient(135deg, #C2A633 0%, #a08928 100%);
+  }
+
   .join-btn:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3);
@@ -1021,6 +1046,10 @@
 
   .join-btn.eth:hover:not(:disabled) {
     box-shadow: 0 4px 12px rgba(98, 126, 234, 0.3);
+  }
+
+  .join-btn.doge:hover:not(:disabled) {
+    box-shadow: 0 4px 12px rgba(194, 166, 51, 0.3);
   }
 
   .join-btn:disabled {
@@ -1232,6 +1261,15 @@
     box-shadow: 0 12px 40px rgba(98, 126, 234, 0.15);
   }
 
+  .table-card.doge-table {
+    border-color: rgba(194, 166, 51, 0.2);
+  }
+
+  .table-card.doge-table:hover {
+    border-color: rgba(194, 166, 51, 0.4);
+    box-shadow: 0 12px 40px rgba(194, 166, 51, 0.15);
+  }
+
   .card-header {
     display: flex;
     justify-content: space-between;
@@ -1331,6 +1369,14 @@
     color: #627EEA;
   }
 
+  .blinds-display.doge {
+    background: linear-gradient(135deg, rgba(194, 166, 51, 0.1), rgba(160, 137, 40, 0.05));
+  }
+
+  .blinds-display.doge .blinds-value {
+    color: #C2A633;
+  }
+
   .blinds-value {
     display: block;
     font-size: 24px;
@@ -1425,6 +1471,11 @@
     border-color: #627EEA;
   }
 
+  .seat.doge.occupied {
+    background: rgba(194, 166, 51, 0.2);
+    border-color: #C2A633;
+  }
+
   .card-footer {
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     padding-top: 16px;
@@ -1455,6 +1506,10 @@
     background: linear-gradient(135deg, #627EEA 0%, #4a5fc7 100%);
   }
 
+  .join-btn-card.doge {
+    background: linear-gradient(135deg, #C2A633 0%, #a08928 100%);
+  }
+
   .join-btn-card:hover:not(:disabled) {
     box-shadow: 0 4px 20px rgba(0, 212, 170, 0.3);
   }
@@ -1465,6 +1520,10 @@
 
   .join-btn-card.eth:hover:not(:disabled) {
     box-shadow: 0 4px 20px rgba(98, 126, 234, 0.3);
+  }
+
+  .join-btn-card.doge:hover:not(:disabled) {
+    box-shadow: 0 4px 20px rgba(194, 166, 51, 0.3);
   }
 
   .join-btn-card:disabled {
