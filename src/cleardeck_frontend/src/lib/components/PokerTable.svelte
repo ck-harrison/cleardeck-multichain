@@ -89,9 +89,8 @@
 
   function getPhaseDisplay(phase) {
     if (!phase) return 'Waiting';
-    const keys = Object.keys(phase);
-    if (keys.length === 0) return 'Waiting';
-    const key = keys[0];
+    // Bindgen returns string enum ("PreFlop"), legacy returns variant object ({PreFlop: null})
+    const key = typeof phase === 'string' ? phase : Object.keys(phase)[0];
     if (!key) return 'Waiting';
     return key.replace(/([A-Z])/g, ' $1').trim();
   }
@@ -99,9 +98,10 @@
   // Safely format hand rank for display
   function formatHandRank(handRank) {
     if (!handRank) return '';
-    const keys = Object.keys(handRank);
-    if (keys.length === 0) return '';
-    const key = keys[0];
+    // Bindgen returns tagged variant with __kind__, legacy returns variant object
+    const key = typeof handRank === 'string' ? handRank
+      : handRank.__kind__ ? handRank.__kind__
+      : Object.keys(handRank)[0];
     if (!key) return '';
     return key.replace(/([A-Z])/g, ' $1').trim();
   }
@@ -156,8 +156,8 @@
 
   const phase = $derived(getPhaseDisplay(tableState?.phase));
   const phaseKey = $derived(
-    tableState?.phase && Object.keys(tableState.phase).length > 0
-      ? Object.keys(tableState.phase)[0]
+    tableState?.phase
+      ? (typeof tableState.phase === 'string' ? tableState.phase : Object.keys(tableState.phase)[0])
       : 'WaitingForPlayers'
   );
   const pot = $derived(Number(tableState?.pot ?? 0));
@@ -191,11 +191,11 @@
     return total;
   });
   const communityCards = $derived(tableState?.community_cards || []);
-  const players = $derived((tableState?.players || []).map(p => (p && p.length > 0) ? p[0] : null));
+  const players = $derived((tableState?.players || []).map(p => p ?? null));
   const actionOn = $derived(tableState?.action_on ?? 0);
   const currentBet = $derived(Number(tableState?.current_bet ?? 0));
   const minRaise = $derived(Number(tableState?.min_raise ?? tableState?.config?.big_blind ?? 0));
-  const mySeat = $derived(tableState?.my_seat?.length > 0 ? tableState.my_seat[0] : null);
+  const mySeat = $derived(tableState?.my_seat ?? null);
   const isMyTurn = $derived(tableState?.is_my_turn === true);
   const gameInProgress = $derived(phaseKey !== 'WaitingForPlayers' && phaseKey !== 'HandComplete');
   const myPlayer = $derived(mySeat !== null && mySeat < players.length ? players[mySeat] : null);
@@ -215,8 +215,8 @@
 
   // Sync from server when we get new data
   $effect(() => {
-    const serverTime = tableState?.time_remaining_secs?.length > 0
-      ? Number(tableState.time_remaining_secs[0])
+    const serverTime = tableState?.time_remaining_secs != null
+      ? Number(tableState.time_remaining_secs)
       : null;
 
     // Only update if server sent a meaningful change (new hand, action changed, etc.)
@@ -298,8 +298,8 @@
     };
   });
   const timeBankRemaining = $derived(
-    tableState?.time_bank_remaining_secs?.length > 0
-      ? Number(tableState.time_bank_remaining_secs[0])
+    tableState?.time_bank_remaining_secs != null
+      ? Number(tableState.time_bank_remaining_secs)
       : 0
   );
   const usingTimeBank = $derived(tableState?.using_time_bank || false);
@@ -328,11 +328,63 @@
 
   // Sitting out status - check player status
   const isSittingOut = $derived(
-    myPlayer?.status && Object.keys(myPlayer.status).length > 0 && Object.keys(myPlayer.status)[0] === 'SittingOut'
+    myPlayer?.status && (typeof myPlayer.status === 'string' ? myPlayer.status === 'SittingOut' : Object.keys(myPlayer.status)[0] === 'SittingOut')
   );
 
+  // Auto-deal countdown timer
+  // Backend has 3s delay, plus ~3-6s for check_timeouts poll + start_new_hand network round trips
+  const AUTO_DEAL_COUNTDOWN_SECS = 5;
+  let dealCountdown = $state(null); // null = no countdown, number = seconds remaining
+  // Plain variables (not $state) to avoid triggering effect re-runs
+  let _dealCountdownInterval = null;
+  let _dealCountdownHandNumber = 0;
+
+  // Count active players with chips (eligible for next hand)
+  const activePlayerCount = $derived(
+    players.filter(p => p !== null && p !== undefined &&
+      (typeof p.status === 'string' ? p.status === 'Active' : Object.keys(p.status)[0] === 'Active') &&
+      Number(p.chips ?? 0) > 0
+    ).length
+  );
+
+  // Start countdown when hand completes with 2+ active players
+  $effect(() => {
+    // Read reactive deps
+    const complete = isHandComplete;
+    const activePlayers = activePlayerCount;
+    const hand = handNumber;
+
+    if (complete && activePlayers >= 2 && hand > _dealCountdownHandNumber) {
+      // New hand complete detected - start countdown
+      _dealCountdownHandNumber = hand;
+      dealCountdown = AUTO_DEAL_COUNTDOWN_SECS;
+
+      if (_dealCountdownInterval) clearInterval(_dealCountdownInterval);
+      _dealCountdownInterval = setInterval(() => {
+        if (dealCountdown !== null && dealCountdown > 0) {
+          dealCountdown = dealCountdown - 1;
+        }
+        // At 0: keep showing "Dealing..." until hand actually starts
+      }, 1000);
+    } else if (!complete && dealCountdown !== null) {
+      // Hand started - clear countdown
+      dealCountdown = null;
+      if (_dealCountdownInterval) {
+        clearInterval(_dealCountdownInterval);
+        _dealCountdownInterval = null;
+      }
+    }
+
+    return () => {
+      if (_dealCountdownInterval) {
+        clearInterval(_dealCountdownInterval);
+        _dealCountdownInterval = null;
+      }
+    };
+  });
+
   // Last action for notification display
-  const lastAction = $derived(tableState?.last_action?.[0] || tableState?.last_action);
+  const lastAction = $derived(tableState?.last_action ?? null);
 
   // Format the last action for display
   function formatLastAction(actionInfo) {
@@ -343,8 +395,8 @@
     const isMe = seat === mySeat;
     const playerName = isMe ? 'You' : `Seat ${seat + 1}`;
 
-    // Get the action type (key of the variant)
-    const actionType = Object.keys(action)[0];
+    // Get the action type — bindgen uses __kind__ tagged variants, legacy uses plain objects
+    const actionType = action.__kind__ || Object.keys(action)[0];
     const actionData = action[actionType];
 
     switch (actionType) {
@@ -422,7 +474,7 @@
   // Track player actions
   $effect(() => {
     if (lastAction) {
-      const actionKey = `${lastAction.seat}-${lastAction.timestamp}-${JSON.stringify(lastAction.action)}`;
+      const actionKey = `${lastAction.seat}-${lastAction.timestamp}-${JSON.stringify(lastAction.action, (_, v) => typeof v === 'bigint' ? v.toString() : v)}`;
       if (actionKey !== lastTrackedAction) {
         const formatted = formatLastAction(lastAction);
         if (formatted) {
@@ -723,21 +775,27 @@
           {#if lastWinners.length > 1}
             <span class="split-info">Split pot ({lastWinners.length} winners)</span>
           {/if}
+          {#if dealCountdown !== null}
+            <span class="deal-countdown">
+              {#if dealCountdown > 0}
+                Next hand in {dealCountdown}s
+              {:else}
+                Dealing<span class="dealing-dots"></span>
+              {/if}
+            </span>
+          {/if}
         </div>
       {:else}
         <div class="pot-display">
-          <div class="main-pot" class:has-chips={pot > 0 || currentRoundBets() > 0}>
+          <div class="main-pot" class:has-chips={pot > 0}>
             <span class="pot-label">POT</span>
             <span class="pot-amount">
-              {#if pot > 0 || currentRoundBets() > 0}
-                {formatChips(pot + currentRoundBets())}
+              {#if pot > 0}
+                {formatChips(pot)}
               {:else}
                 --
               {/if}
             </span>
-            {#if currentRoundBets() > 0 && pot > 0}
-              <span class="pot-breakdown">({formatChips(pot)} + {formatChips(currentRoundBets())} betting)</span>
-            {/if}
           </div>
           {#if sidePots.length > 0}
             <div class="side-pots">
@@ -764,7 +822,14 @@
           {/if}
         {/each}
       </div>
-      <div class="phase-indicator">{phase}</div>
+      <div class="phase-indicator">
+        {phase}
+        {#if dealCountdown !== null && dealCountdown > 0}
+          <span class="phase-countdown"> &middot; {dealCountdown}s</span>
+        {:else if dealCountdown === 0}
+          <span class="phase-countdown"> &middot; Dealing...</span>
+        {/if}
+      </div>
     </div>
 
     <!-- Player seats -->
@@ -842,7 +907,7 @@
                   <!-- Show our cards face up during active hand or showdown/hand complete -->
                   <Card card={myCards[0]} />
                   <Card card={myCards[1]} />
-                {:else if player.hole_cards && player.hole_cards.length > 0}
+                {:else if player.hole_cards}
                   <!-- Backend returns hole_cards when they should be visible (showdown, voluntarily shown) -->
                   <Card card={player.hole_cards[0]} />
                   <Card card={player.hole_cards[1]} />
@@ -920,8 +985,14 @@
       </div>
     {:else if !gameInProgress}
       <div class="no-game-message">
-        {#if phaseKey === 'HandComplete'}
-          Hand complete - Start a new hand
+        {#if phaseKey === 'HandComplete' && dealCountdown !== null}
+          {#if dealCountdown > 0}
+            Next hand in {dealCountdown}s...
+          {:else}
+            Dealing next hand...
+          {/if}
+        {:else if phaseKey === 'HandComplete'}
+          Waiting for players...
         {:else}
           Waiting for players...
         {/if}
@@ -1966,6 +2037,38 @@
   .split-info {
     font-size: 11px;
     color: rgba(255, 255, 255, 0.6);
+  }
+
+  /* Auto-deal countdown */
+  .deal-countdown {
+    font-size: 13px;
+    font-weight: 600;
+    color: #00d4aa;
+    margin-top: 4px;
+    animation: countdown-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes countdown-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .dealing-dots::after {
+    content: '';
+    animation: dealing-dots 1.5s steps(4, end) infinite;
+  }
+
+  @keyframes dealing-dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+    100% { content: ''; }
+  }
+
+  .phase-countdown {
+    color: #00d4aa;
+    font-weight: 600;
   }
 
   .main-pot {

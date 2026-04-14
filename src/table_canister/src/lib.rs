@@ -6199,6 +6199,90 @@ async fn check_doge_deposit() -> Result<Vec<DogeDepositStatus>, String> {
     Ok(statuses)
 }
 
+/// Move DOGE from internal wallet (DOGE_BALANCES) to table escrow (BALANCES)
+/// This bridges the gap between DOGE deposits and the buy-in system
+#[ic_cdk::update]
+fn deposit_doge_to_table(amount: u64) -> Result<u64, String> {
+    let caller = ic_cdk::api::msg_caller();
+    if caller == Principal::anonymous() {
+        return Err("Anonymous callers cannot perform this action".to_string());
+    }
+    check_rate_limit()?;
+
+    let currency = get_table_currency();
+    if currency != Currency::DOGE {
+        return Err("This function is only available for DOGE tables".to_string());
+    }
+
+    if amount == 0 {
+        return Err("Amount must be greater than zero".to_string());
+    }
+
+    // Deduct from DOGE wallet balance
+    let deducted = DOGE_BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let balance = balances.entry(caller).or_insert(0);
+        if *balance < amount {
+            return Err(format!("Insufficient DOGE balance. Have: {}, need: {}",
+                currency.format_amount(*balance), currency.format_amount(amount)));
+        }
+        *balance = balance.saturating_sub(amount);
+        Ok(amount)
+    })?;
+
+    // Credit to table escrow
+    let new_escrow = BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let escrow = balances.entry(caller).or_insert(0);
+        *escrow = escrow.saturating_add(deducted);
+        *escrow
+    });
+
+    Ok(new_escrow)
+}
+
+/// Withdraw DOGE from table escrow back to internal DOGE wallet balance
+/// This is the reverse of deposit_doge_to_table
+#[ic_cdk::update]
+fn withdraw_doge_from_table(amount: u64) -> Result<u64, String> {
+    let caller = ic_cdk::api::msg_caller();
+    if caller == Principal::anonymous() {
+        return Err("Anonymous callers cannot perform this action".to_string());
+    }
+    check_rate_limit()?;
+
+    let currency = get_table_currency();
+    if currency != Currency::DOGE {
+        return Err("This function is only available for DOGE tables".to_string());
+    }
+
+    if amount == 0 {
+        return Err("Amount must be greater than zero".to_string());
+    }
+
+    // Deduct from table escrow
+    BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let escrow = balances.entry(caller).or_insert(0);
+        if *escrow < amount {
+            return Err(format!("Insufficient table balance. Have: {}, need: {}",
+                currency.format_amount(*escrow), currency.format_amount(amount)));
+        }
+        *escrow = escrow.saturating_sub(amount);
+        Ok(())
+    })?;
+
+    // Credit to DOGE wallet balance
+    let new_wallet = DOGE_BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let balance = balances.entry(caller).or_insert(0);
+        *balance = balance.saturating_add(amount);
+        *balance
+    });
+
+    Ok(new_wallet)
+}
+
 /// Get the user's internal DOGE wallet balance (not table escrow)
 #[ic_cdk::query]
 fn get_doge_balance() -> u64 {

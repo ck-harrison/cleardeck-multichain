@@ -82,6 +82,13 @@
   let ethCkethAmount = $state(null);
   let showWhyTheWait = $state(false);
 
+  // DOGE deposit-to-table state
+  let dogeWalletBalance = $state(null);
+  let dogeDepositAmount = $state('');
+  let dogeDepositing = $state(false);
+  let dogeError = $state(null);
+  let dogeSuccess = $state(null);
+
   // Price state (fetched from CoinGecko)
   let icpPriceUsd = $state(null);
   let btcPriceUsd = $state(null);
@@ -567,12 +574,51 @@
     if (isBTC) {
       loadBtcDepositAddress().catch(e => console.error('loadBtcDepositAddress error:', e));
     }
+    if (isDOGE) {
+      loadDogeBalance().catch(e => console.error('loadDogeBalance error:', e));
+    }
     // Cleanup polling intervals on unmount
     return () => {
       stopEthDepositCheck();
       stopCkethPolling();
     };
   });
+
+  async function loadDogeBalance() {
+    try {
+      const balance = await tableActor.get_doge_balance();
+      dogeWalletBalance = Number(balance);
+    } catch (e) {
+      console.error('Failed to load DOGE balance:', e);
+      dogeWalletBalance = 0;
+    }
+  }
+
+  async function dogeDepositToTable() {
+    dogeError = null;
+    dogeDepositing = true;
+    try {
+      const amountE8s = BigInt(Math.floor(Number(dogeDepositAmount) * 100_000_000));
+      if (amountE8s <= 0n) {
+        dogeError = 'Enter a valid amount';
+        dogeDepositing = false;
+        return;
+      }
+      const result = await tableActor.deposit_doge_to_table(amountE8s);
+      if ('Ok' in result) {
+        dogeSuccess = `Deposited ${dogeDepositAmount} DOGE to table. New table balance: ${(Number(result.Ok) / 100_000_000).toFixed(4)} DOGE`;
+      } else if ('Err' in result) {
+        dogeError = result.Err;
+      } else {
+        // Direct return value (not Result wrapper)
+        dogeSuccess = `Deposited ${dogeDepositAmount} DOGE to table.`;
+      }
+    } catch (e) {
+      dogeError = e.message || 'Deposit failed';
+    } finally {
+      dogeDepositing = false;
+    }
+  }
 
   function copyDepositAddress() {
     navigator.clipboard.writeText(tableCanisterId);
@@ -830,6 +876,51 @@
   </div>
 
   <div class="modal-body">
+    <!-- DOGE: move from internal DOGE wallet to table escrow -->
+    {#if isDOGE}
+      <div class="doge-deposit-info">
+        {#if dogeSuccess}
+          <p class="doge-success">{dogeSuccess}</p>
+          <button class="doge-close-btn" onclick={() => { onDepositSuccess?.(); onClose(); }}>Done</button>
+        {:else}
+          <div class="doge-balance-row">
+            <span>Your DOGE Wallet</span>
+            <span class="doge-balance-value">{dogeWalletBalance !== null ? (dogeWalletBalance / 100_000_000).toFixed(4) : '...'} DOGE</span>
+          </div>
+          {#if dogeWalletBalance !== null && dogeWalletBalance > 0}
+            <div class="doge-amount-input">
+              <label for="doge-deposit-amount">Amount to deposit to table:</label>
+              <div class="doge-input-row">
+                <input
+                  id="doge-deposit-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  bind:value={dogeDepositAmount}
+                  placeholder="0.00"
+                />
+                <span class="doge-unit">DOGE</span>
+                <button class="doge-max-btn" onclick={() => dogeDepositAmount = (dogeWalletBalance / 100_000_000).toFixed(4)}>Max</button>
+              </div>
+            </div>
+            {#if dogeError}
+              <p class="doge-error">{dogeError}</p>
+            {/if}
+            <button
+              class="doge-close-btn"
+              disabled={dogeDepositing || !dogeDepositAmount || Number(dogeDepositAmount) <= 0}
+              onclick={dogeDepositToTable}
+            >
+              {dogeDepositing ? 'Depositing...' : 'Deposit to Table'}
+            </button>
+          {:else if dogeWalletBalance !== null}
+            <p class="doge-no-funds">No DOGE in wallet. Deposit DOGE first via your deposit address in the sidebar.</p>
+            <button class="doge-close-btn" onclick={onClose}>Got it</button>
+          {/if}
+        {/if}
+      </div>
+    {:else}
+
     <!-- BTC Deposit Method Toggle -->
     {#if isBTC}
       <div class="deposit-method-toggle">
@@ -1618,10 +1709,125 @@
         </button>
       </div>
     {/if}
+    {/if}
   </div>
 </div>
 
 <style>
+  .doge-deposit-info {
+    padding: 8px 0;
+    color: #ccc;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .doge-deposit-info p {
+    margin: 0 0 12px 0;
+    color: #C2A633;
+  }
+  .doge-deposit-info ol {
+    margin: 0 0 16px 0;
+    padding-left: 20px;
+  }
+  .doge-deposit-info li {
+    margin-bottom: 6px;
+  }
+  .doge-deposit-info em {
+    color: #C2A633;
+    font-style: normal;
+  }
+  .doge-close-btn {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #C2A633, #a08928);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .doge-close-btn:hover {
+    background: linear-gradient(135deg, #d4b83d, #b09a30);
+  }
+  .doge-close-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .doge-balance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #333;
+  }
+  .doge-balance-value {
+    color: #C2A633;
+    font-weight: 600;
+  }
+  .doge-amount-input {
+    margin-bottom: 12px;
+  }
+  .doge-amount-input label {
+    display: block;
+    margin-bottom: 6px;
+    color: #999;
+    font-size: 13px;
+  }
+  .doge-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .doge-input-row input {
+    flex: 1;
+    padding: 10px 12px;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+  }
+  .doge-input-row input:focus {
+    border-color: #C2A633;
+  }
+  .doge-unit {
+    color: #999;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .doge-max-btn {
+    padding: 8px 12px;
+    background: #333;
+    color: #C2A633;
+    border: 1px solid #C2A633;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .doge-max-btn:hover {
+    background: #C2A633;
+    color: #000;
+  }
+  .doge-error {
+    color: #ff4444;
+    font-size: 13px;
+    margin: 8px 0;
+  }
+  .doge-success {
+    color: #4caf50;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  .doge-no-funds {
+    color: #999;
+    font-size: 13px;
+    text-align: center;
+    margin: 16px 0;
+  }
+
   .modal-backdrop {
     position: fixed;
     inset: 0;

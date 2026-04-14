@@ -651,6 +651,34 @@ fn update_table_config(table_id: u64, config: TableConfig) -> Result<(), String>
     })
 }
 
+/// Close a table (admin only) — removes it from lobby listings
+#[ic_cdk::update]
+fn admin_close_table(table_id: u64) -> Result<(), String> {
+    if !is_admin() {
+        return Err("Unauthorized: admin only".to_string());
+    }
+    TABLES.with(|tables| {
+        let mut tables = tables.borrow_mut();
+        let table = tables.get_mut(&table_id).ok_or("Table not found")?;
+        table.status = TableStatus::Closed;
+        Ok(())
+    })
+}
+
+/// Reopen a closed table (admin only)
+#[ic_cdk::update]
+fn admin_reopen_table(table_id: u64) -> Result<(), String> {
+    if !is_admin() {
+        return Err("Unauthorized: admin only".to_string());
+    }
+    TABLES.with(|tables| {
+        let mut tables = tables.borrow_mut();
+        let table = tables.get_mut(&table_id).ok_or("Table not found")?;
+        table.status = TableStatus::WaitingForPlayers;
+        Ok(())
+    })
+}
+
 /// Update player count for a table (called by table canister)
 /// SECURITY: Only authorized table canisters or admin can update
 #[ic_cdk::update]

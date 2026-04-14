@@ -44,8 +44,8 @@
         for (let i = hn; i >= startHand; i--) {
           try {
             const result = await tableActor.get_hand_history(BigInt(i));
-            if (result && result.length > 0) {
-              const hand = result[0];
+            if (result != null) {
+              const hand = result;
               // Calculate player count from winners, showdown_players, or actions
               const playerCount = Math.max(
                 hand.winners?.length || 0,
@@ -131,8 +131,8 @@
       if (tableActor) {
         try {
           const result = await tableActor.get_hand_history(handId);
-          if (result && result.length > 0 && result[0]) {
-            const hand = result[0];
+          if (result != null) {
+            const hand = result;
             // Convert table canister format (community_cards array) to history format (flop/turn/river)
             // Table canister returns HandHistory with community_cards: Vec<Card>
             const communityCards = hand.community_cards || [];
@@ -160,13 +160,10 @@
               river: communityCards.length >= 5
                 ? [communityCards[4]]
                 : null,
-              // Use showdown_players for all players who showed cards (not just winners)
-              // Note: Candid optional types come as arrays: [] for None, [value] for Some
-              // So p.cards is [[Card, Card]] when present, not [Card, Card]
+              // Bindgen: opt (Card, Card) → [Card, Card] | undefined (not wrapped in extra array)
               players: hasShowdownData
                 ? showdownPlayers.map(p => {
-                    // Handle Candid optional: cards is [] or [[card1, card2]]
-                    const cardsTuple = Array.isArray(p.cards) && p.cards.length > 0 ? p.cards[0] : null;
+                    const cardsTuple = p.cards ?? null;
                     return {
                       seat: p.seat,
                       principal: p.principal,
@@ -179,8 +176,7 @@
                     };
                   })
                 : (hand.winners ? hand.winners.map(w => {
-                    // Handle Candid optional: cards is [] or [[card1, card2]]
-                    const cardsTuple = Array.isArray(w.cards) && w.cards.length > 0 ? w.cards[0] : null;
+                    const cardsTuple = w.cards ?? null;
                     return {
                       seat: w.seat,
                       principal: w.principal,
@@ -204,8 +200,8 @@
       if (!handLoaded) {
         try {
           const result = await history.get_hand(handId);
-          if (result && result.length > 0) {
-            selectedHand = result[0];
+          if (result != null) {
+            selectedHand = result;
             handLoaded = true;
           }
         } catch (historyError) {
@@ -255,12 +251,11 @@
 
   function getHandRankName(handRank) {
     if (!handRank) return null;
-    // Handle Candid optional - could be [] or [value]
+    // Handle Candid optional - could be [] or [value] (legacy) or T | undefined (bindgen)
     const rank = Array.isArray(handRank) ? handRank[0] : handRank;
     if (!rank) return null;
-    const keys = Object.keys(rank);
-    if (keys.length === 0) return null;
-    const key = keys[0];
+    // Bindgen uses __kind__ tagged variants
+    const key = rank.__kind__ || Object.keys(rank)[0];
     if (!key) return null;
     return key.replace(/([A-Z])/g, ' $1').trim();
   }

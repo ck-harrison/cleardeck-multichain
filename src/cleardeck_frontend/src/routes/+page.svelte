@@ -23,7 +23,17 @@
   let loading = $state(false);
   let loadingTableState = false; // Non-reactive flag to prevent concurrent loadTableState calls
   let loadTableStateRequestId = 0; // Counter to discard stale responses
+  let lastCheckTimeoutsCall = 0; // Timestamp of last check_timeouts call
+  let checkTimeoutsRunning = false; // Prevent concurrent check_timeouts calls
+  const CHECK_TIMEOUTS_INTERVAL = 3000; // Only call check_timeouts every 3 seconds (it's an expensive update call)
   let error = $state(null);
+  let errorTimeout = null;
+  $effect(() => {
+    if (error) {
+      clearTimeout(errorTimeout);
+      errorTimeout = setTimeout(() => { error = null; }, 8000);
+    }
+  });
   let success = $state(null);
   let showProofPanel = $state(false);
   let showHandHistory = $state(false);
@@ -217,6 +227,58 @@
     startPolling();
   }
 
+  // Background task: check_timeouts + auto-deal (fire and forget)
+  // This is an UPDATE call (2-4s on mainnet) so it must NOT block state refresh
+  function maybeCheckTimeouts() {
+    if (!tableActor || checkTimeoutsRunning) return;
+    const now = Date.now();
+    if (now - lastCheckTimeoutsCall < CHECK_TIMEOUTS_INTERVAL) return;
+    lastCheckTimeoutsCall = now;
+    checkTimeoutsRunning = true;
+
+    const actor = tableActor; // capture reference
+    (async () => {
+      try {
+        const timeoutResult = await actor.check_timeouts();
+
+        // Handle auto-deal if ready
+        if (timeoutResult && 'AutoDealReady' in timeoutResult) {
+          const currentPhase = tableState?.phase ? (typeof tableState.phase === 'string' ? tableState.phase : Object.keys(tableState.phase)[0]) : null;
+          const canStartHand = !currentPhase || currentPhase === 'WaitingForPlayers' || currentPhase === 'HandComplete';
+
+          if (canStartHand) {
+            try {
+              playSound('deal');
+              const result = await actor.start_new_hand();
+              if ('Ok' in result) {
+                shuffleProof = result.Ok;
+              } else if ('Err' in result) {
+                const errMsg = result.Err.toLowerCase();
+                if (!errMsg.includes('active players') && !errMsg.includes('already in progress') && !errMsg.includes('in progress')) {
+                  logger.error('Auto-deal failed:', result.Err);
+                }
+              }
+            } catch (e) {
+              const errMsg = (e.message || e.toString() || '').toLowerCase();
+              if (!errMsg.includes('already in progress') && !errMsg.includes('in progress')) {
+                logger.error('Auto-deal failed:', e);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        logger.debug('check_timeouts failed:', e);
+        if (isSignatureError(e)) {
+          error = 'Session expired. Please log in again.';
+          stopPolling();
+          auth.logout();
+        }
+      } finally {
+        checkTimeoutsRunning = false;
+      }
+    })();
+  }
+
   async function loadTableState() {
     if (!tableActor) return;
 
@@ -228,45 +290,11 @@
     const requestId = ++loadTableStateRequestId;
 
     try {
-      // Check for timeouts and auto-deal first
-      const timeoutResult = await tableActor.check_timeouts();
-
-      // Discard stale response if a newer request was started
-      if (requestId !== loadTableStateRequestId) return;
-
-      // Handle auto-deal if ready
-      if (timeoutResult && 'AutoDealReady' in timeoutResult) {
-        // Only try to start if we're not already in a hand (client-side guard)
-        const currentPhase = tableState?.phase ? Object.keys(tableState.phase)[0] : null;
-        const canStartHand = !currentPhase || currentPhase === 'WaitingForPlayers' || currentPhase === 'HandComplete';
-
-        if (canStartHand) {
-          try {
-            playSound('deal');
-            const result = await tableActor.start_new_hand();
-            if ('Ok' in result) {
-              shuffleProof = result.Ok;
-            } else if ('Err' in result) {
-              // Silently ignore expected race condition errors
-              const errMsg = result.Err.toLowerCase();
-              if (!errMsg.includes('active players') && !errMsg.includes('already in progress') && !errMsg.includes('in progress')) {
-                logger.error('Auto-deal failed:', result.Err);
-              }
-            }
-          } catch (e) {
-            // Silently ignore expected race condition errors
-            const errMsg = (e.message || e.toString() || '').toLowerCase();
-            if (!errMsg.includes('already in progress') && !errMsg.includes('in progress')) {
-              logger.error('Auto-deal failed:', e);
-            }
-          }
-        }
-      }
-
-      // Double-check tableActor is still valid (could be cleared if user left table)
-      if (!tableActor) return;
+      // Fire check_timeouts in background — NEVER blocks table view refresh
+      maybeCheckTimeouts();
 
       // Use get_table_view which properly hides opponent cards
+      // These are QUERY calls — fast (~200ms) and cheap, always run immediately
       const [viewResult, proofResult] = await Promise.all([
         tableActor.get_table_view(),
         tableActor.get_shuffle_proof()
@@ -275,10 +303,10 @@
       // Discard stale response if a newer request was started
       if (requestId !== loadTableStateRequestId) return;
 
-      // Handle optional return (candid returns arrays for opt types)
+      // Handle optional return (bindgen returns T | null for opt types)
       let currentTableView = null;
-      if (viewResult && viewResult.length > 0) {
-        currentTableView = viewResult[0];
+      if (viewResult != null) {
+        currentTableView = viewResult;
         // Only update state if game data changed (timer ticks client-side)
         if (gameStateChanged(tableState, currentTableView)) {
           tableState = currentTableView;
@@ -291,15 +319,14 @@
         }
 
         // Extract my cards from my player view
-        if (currentTableView.my_seat && currentTableView.my_seat.length > 0) {
-          const mySeatNum = currentTableView.my_seat[0];
+        if (currentTableView.my_seat != null) {
+          const mySeatNum = currentTableView.my_seat;
           // Bounds check before accessing players array
           if (mySeatNum < currentTableView.players.length) {
-            const myPlayerOpt = currentTableView.players[mySeatNum];
-            if (myPlayerOpt && myPlayerOpt.length > 0) {
-            const myPlayer = myPlayerOpt[0];
-            if (myPlayer.hole_cards && myPlayer.hole_cards.length > 0) {
-              const newCards = myPlayer.hole_cards[0];
+            const myPlayer = currentTableView.players[mySeatNum];
+            if (myPlayer) {
+            if (myPlayer.hole_cards) {
+              const newCards = myPlayer.hole_cards;
               // Play sound when cards are dealt
               if (!myCards && newCards) {
                 playSound('deal');
@@ -319,11 +346,11 @@
         }
       }
 
-      if (proofResult && proofResult.length > 0) {
-        const newProof = proofResult[0];
+      if (proofResult != null) {
+        const newProof = proofResult;
         // Check if hand completed and we won
         if (currentTableView?.last_hand_winners && currentTableView.last_hand_winners.length > 0) {
-          const mySeatNum = currentTableView.my_seat?.[0];
+          const mySeatNum = currentTableView.my_seat;
           if (mySeatNum !== undefined) {
             const won = currentTableView.last_hand_winners.some(w => w.seat === mySeatNum);
             if (won && shuffleProof !== newProof) {
@@ -381,7 +408,7 @@
     // Only sync if name changed since last sync
     if (customName === lastSyncedName) return;
     try {
-      await tableActor.set_display_name(customName ? [customName] : []);
+      await tableActor.set_display_name(customName || null);
       lastSyncedName = customName;
       logger.debug('Display name synced:', customName || '(cleared)');
     } catch (e) {
@@ -466,7 +493,7 @@
         case 'fold':
           if (tableState) tableState.is_my_turn = false;
           playSound('fold');
-          result = await tableActor.player_action({ Fold: null });
+          result = await tableActor.player_action({ __kind__: 'Fold', Fold: null });
           if ('Err' in result) {
             error = result.Err;
             playSound('error');
@@ -476,7 +503,7 @@
         case 'check':
           if (tableState) tableState.is_my_turn = false;
           playSound('check');
-          result = await tableActor.player_action({ Check: null });
+          result = await tableActor.player_action({ __kind__: 'Check', Check: null });
           if ('Err' in result) {
             error = result.Err;
             playSound('error');
@@ -486,7 +513,7 @@
         case 'call':
           if (tableState) tableState.is_my_turn = false;
           playSound('call');
-          result = await tableActor.player_action({ Call: null });
+          result = await tableActor.player_action({ __kind__: 'Call', Call: null });
           if ('Err' in result) {
             error = result.Err;
             playSound('error');
@@ -497,7 +524,7 @@
           if (data) {
             if (tableState) tableState.is_my_turn = false;
             playSound('raise');
-            result = await tableActor.player_action({ Raise: BigInt(data) });
+            result = await tableActor.player_action({ __kind__: 'Raise', Raise: BigInt(data) });
             if ('Err' in result) {
               error = result.Err;
               playSound('error');
@@ -508,7 +535,7 @@
         case 'allin':
           if (tableState) tableState.is_my_turn = false;
           playSound('allin');
-          result = await tableActor.player_action({ AllIn: null });
+          result = await tableActor.player_action({ __kind__: 'AllIn', AllIn: null });
           if ('Err' in result) {
             error = result.Err;
             playSound('error');
@@ -535,7 +562,7 @@
           if (data) {
             if (tableState) tableState.is_my_turn = false;
             playSound('bet');
-            result = await tableActor.player_action({ Bet: BigInt(data) });
+            result = await tableActor.player_action({ __kind__: 'Bet', Bet: BigInt(data) });
             if ('Err' in result) {
               error = result.Err;
               playSound('error');
@@ -598,7 +625,10 @@
           break;
       }
 
-      await loadTableState();
+      // Trigger immediate state refresh but DON'T await it —
+      // the polling loop will pick up the new state within 500ms.
+      // Blocking here causes 4-8s freezes (action + check_timeouts).
+      loadTableState();
     } catch (e) {
       logger.error(`Action ${action} failed:`, e);
       // Check if this is a signature verification error (expired II delegation)
@@ -736,14 +766,16 @@
   </header>
 
   {#if error}
-    <div class="toast error">
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="toast error" onclick={() => error = null} style="cursor: pointer;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/>
         <line x1="15" y1="9" x2="9" y2="15"/>
         <line x1="9" y1="9" x2="15" y2="15"/>
       </svg>
       <span>{error}</span>
-      <button onclick={() => error = null}>×</button>
+      <button onclick={() => error = null} style="font-size: 24px; padding: 4px 8px; min-width: 32px; min-height: 32px;">×</button>
     </div>
   {/if}
 
@@ -1246,7 +1278,7 @@
     top: 80px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 100;
+    z-index: 10000;
     display: flex;
     align-items: center;
     gap: 12px;

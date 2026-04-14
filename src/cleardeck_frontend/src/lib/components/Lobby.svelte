@@ -18,7 +18,7 @@
 
   function getStatusColor(status) {
     if (!status) return '#666';
-    const key = Object.keys(status)[0];
+    const key = typeof status === 'string' ? status : Object.keys(status)[0];
     switch(key) {
       case 'WaitingForPlayers': return '#f59e0b';
       case 'InProgress': return '#00d4aa';
@@ -29,7 +29,7 @@
 
   function getStatusText(status) {
     if (!status) return 'Unknown';
-    const key = Object.keys(status)[0];
+    const key = typeof status === 'string' ? status : Object.keys(status)[0];
     if (key === 'WaitingForPlayers') return 'Waiting';
     if (key === 'InProgress') return 'Playing';
     return key;

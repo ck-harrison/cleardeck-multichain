@@ -5,8 +5,9 @@ import { createActor as createHistoryActor } from '../bindings/history_canister'
 import { building } from '$app/environment';
 import { auth } from './auth.js';
 
-// Network timeout in milliseconds (30 seconds)
-const NETWORK_TIMEOUT_MS = 30000;
+// Network timeout in milliseconds (10 seconds)
+// ICP update calls take 2-4s; 10s is generous enough while preventing long freezes
+const NETWORK_TIMEOUT_MS = 10000;
 
 function dummyActor() {
     return new Proxy({}, { get() { throw new Error("Canister invoked while building"); } });

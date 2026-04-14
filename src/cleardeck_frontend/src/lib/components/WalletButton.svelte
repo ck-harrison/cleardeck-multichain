@@ -29,6 +29,40 @@
   // OISY wallet state
   let oisyState = $state({ isConnected: false, isConnecting: false, icpBalance: null, ckbtcBalance: null, ckethBalance: null, loadingBalances: false, principal: null, error: null });
   let copiedOisyPrincipal = $state(false);
+  let showDepositInstructions = $state(false);
+
+  // Portal deposit instructions to document.body to escape stacking contexts
+  $effect(() => {
+    if (!showDepositInstructions) return;
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:flex-start;justify-content:center;z-index:99999;overflow-y:auto;padding:80px 16px 40px;backdrop-filter:blur(4px);';
+    overlay.onclick = () => { showDepositInstructions = false; };
+    const popup = document.createElement('div');
+    popup.style.cssText = 'background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:24px;max-width:500px;width:100%;color:#ccc;font-size:14px;line-height:1.7;position:relative;';
+    popup.onclick = (e) => e.stopPropagation();
+    popup.innerHTML = `
+      <button style="position:absolute;top:12px;right:16px;background:none;border:none;color:#999;font-size:24px;cursor:pointer;line-height:1;" id="popup-close">&times;</button>
+      <h3 style="margin:0 0 16px;color:#fff;font-size:18px;">How to Deposit</h3>
+      <ol style="margin:0 0 16px;padding-left:20px;">
+        <li style="margin-bottom:8px;"><strong>Get your deposit address</strong> — Click <em style="color:#C2A633;font-style:normal;">Show Address</em> next to the currency you want to deposit (ICP, BTC, ETH, or DOGE).</li>
+        <li style="margin-bottom:8px;"><strong>Send funds</strong> — Copy the address and send funds to it from any wallet or exchange. Each currency has its own unique deposit address.</li>
+        <li style="margin-bottom:8px;"><strong>Wait for confirmations</strong> — Processing times vary by chain:
+          <ul style="margin-top:4px;padding-left:16px;">
+            <li><strong>ICP</strong> — Near instant (~2 seconds)</li>
+            <li><strong>BTC</strong> — ~60 minutes (6 confirmations)</li>
+            <li><strong>ETH</strong> — ~20 minutes (Ethereum finality)</li>
+            <li><strong>DOGE</strong> — ~6 minutes (6 confirmations)</li>
+          </ul>
+        </li>
+        <li style="margin-bottom:8px;"><strong>Click "Check for Deposit"</strong> — Once you believe the funds have arrived, click the <em style="color:#C2A633;font-style:normal;">Check for Deposit</em> button next to the currency. The system will detect your deposit and credit your balance.</li>
+      </ol>
+      <p style="color:#666;font-size:12px;margin:0;">Your deposit addresses are unique to your account and never change. You can reuse them for future deposits.</p>
+    `;
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+    popup.querySelector('#popup-close').onclick = () => { showDepositInstructions = false; };
+    return () => { overlay.remove(); };
+  });
 
   // ckBTC canister IDs (mainnet)
   const CKBTC_MINTER_CANISTER = 'mqygn-kiaaa-aaaar-qaadq-cai';
@@ -1109,6 +1143,7 @@
           <div class="dropdown-section">
             <span class="section-title">Deposit Addresses</span>
             <span class="section-hint">Send funds to these addresses to deposit</span>
+            <button class="deposit-instructions-link" onclick={() => showDepositInstructions = true}>Deposit Instructions</button>
 
             <!-- ICP Deposit -->
             <div class="deposit-item">
@@ -1564,9 +1599,104 @@
     display: block;
     color: #666;
     font-size: 11px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     line-height: 1.4;
   }
+
+  .deposit-instructions-link {
+    background: none;
+    border: none;
+    color: #7b9fcc;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 8px;
+    display: block;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .deposit-instructions-link:hover { color: #a0c4f0; }
+
+  .deposit-instructions-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 10000;
+    overflow-y: auto;
+    padding: 80px 16px 40px;
+  }
+
+  .deposit-instructions-popup {
+    background: #1a1a2e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 420px;
+    width: 90%;
+    position: relative;
+    color: #ccc;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .deposit-instructions-popup h3 {
+    margin: 0 0 16px 0;
+    color: #e0e0e0;
+    font-size: 16px;
+  }
+
+  .deposit-instructions-popup ol {
+    margin: 0;
+    padding-left: 20px;
+  }
+
+  .deposit-instructions-popup ol li {
+    margin-bottom: 12px;
+  }
+
+  .deposit-instructions-popup ul {
+    margin: 6px 0 0 0;
+    padding-left: 16px;
+    list-style: disc;
+  }
+
+  .deposit-instructions-popup ul li {
+    margin-bottom: 2px;
+  }
+
+  .deposit-instructions-popup em {
+    color: #7b9fcc;
+    font-style: normal;
+  }
+
+  .instructions-note {
+    margin: 16px 0 0 0;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    font-size: 12px;
+    color: #888;
+  }
+
+  .popup-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+  .popup-close:hover { color: #fff; }
 
   .id-row {
     display: flex;

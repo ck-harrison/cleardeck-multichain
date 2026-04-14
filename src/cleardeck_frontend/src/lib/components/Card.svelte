@@ -23,11 +23,15 @@
 
   function getSuit(card) {
     if (!card?.suit) return null;
+    // Bindgen returns string enums ("Hearts"), legacy returns variant objects ({Hearts: null})
+    if (typeof card.suit === 'string') return card.suit;
     return Object.keys(card.suit)[0];
   }
 
   function getRank(card) {
     if (!card?.rank) return null;
+    // Bindgen returns string enums ("Ace"), legacy returns variant objects ({Ace: null})
+    if (typeof card.rank === 'string') return card.rank;
     return Object.keys(card.rank)[0];
   }
 
