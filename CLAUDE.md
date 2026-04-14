@@ -27,6 +27,9 @@ User transfers to canister, then calls `notify_deposit(block_index)`. The canist
 - **Verifies the transfer sender matches the caller** (via `compute_account_identifier`)
 - Marks the block as verified to prevent double-claims
 
+### 4. Deposit Replay Prevention (Watermark - `notify_deposit()`)
+When `VERIFIED_DEPOSITS` exceeds 10K entries, old block indices are pruned. A `MIN_VERIFIED_BLOCK_INDEX` watermark tracks the highest pruned block index. Any `notify_deposit(block_index)` where `block_index <= watermark` is rejected. **NEVER** remove entries from `VERIFIED_DEPOSITS` without raising the watermark, or pruned deposits become replayable for free funds.
+
 ### Patterns to NEVER Use
 
 **DO NOT** create a deposit function that:

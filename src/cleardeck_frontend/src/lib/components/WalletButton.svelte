@@ -25,6 +25,18 @@
   let copiedBtcAddress = $state(false);
   let ckbtcBalance = $state(null);
   let loadingCkbtcBalance = $state(false);
+  // BTC deposit progress state
+  let btcCheckActive = $state(false);
+  let btcCheckInterval = $state(null);
+  let btcCheckTimeout = $state(null);
+  let btcDepositPolling = $state(false);
+  let btcDepositStartTime = $state(null);
+  let btcDepositElapsed = $state(0);
+  let btcDepositTimerInterval = $state(null);
+  let btcPendingConfirmations = $state(null); // number of confirmations so far
+  let btcMinted = $state(false);
+  let btcDepositStatus = $state(null); // { type, message }
+  let showBtcWhyTheWait = $state(false);
 
   // OISY wallet state
   let oisyState = $state({ isConnected: false, isConnecting: false, icpBalance: null, ckbtcBalance: null, ckethBalance: null, loadingBalances: false, principal: null, error: null });
@@ -90,6 +102,12 @@
   let dogeCheckTimeout = $state(null);
   let dogeDepositStatus = $state(null); // { type, message }
   let dogeTableActorCached = $state(null);
+  // DOGE deposit progress state
+  let dogeDepositPolling = $state(false);
+  let dogeDepositStartTime = $state(null);
+  let dogeDepositElapsed = $state(0);
+  let dogeDepositTimerInterval = $state(null);
+  let showDogeWhyTheWait = $state(false);
   // ETH deposit check + progress state
   let ethCheckInterval = $state(null);
   let ethCheckActive = $state(false);
@@ -120,9 +138,15 @@
       ethCkethArrived = false;
       showWhyTheWait = false;
       dogeDepositStatus = null;
+      btcDepositStatus = null;
+      btcMinted = false;
+      showBtcWhyTheWait = false;
+      showDogeWhyTheWait = false;
+      dogeDepositPolling = false;
       stopEthDepositCheck();
       stopEthCkethPolling();
       stopDogeDepositCheck();
+      stopBtcDepositCheck();
     }
   });
 
@@ -640,6 +664,12 @@
     if (dogeCheckActive) return;
     dogeCheckActive = true;
     dogeDepositStatus = null;
+    dogeDepositPolling = true;
+    dogeDepositStartTime = Date.now();
+    dogeDepositElapsed = 0;
+    dogeDepositTimerInterval = setInterval(() => {
+      dogeDepositElapsed = Math.floor((Date.now() - dogeDepositStartTime) / 1000);
+    }, 1000);
 
     dogeDepositCheck();
     dogeCheckInterval = setInterval(dogeDepositCheck, 15000);
@@ -650,7 +680,9 @@
   function stopDogeDepositCheck() {
     if (dogeCheckInterval) { clearInterval(dogeCheckInterval); dogeCheckInterval = null; }
     if (dogeCheckTimeout) { clearTimeout(dogeCheckTimeout); dogeCheckTimeout = null; }
+    if (dogeDepositTimerInterval) { clearInterval(dogeDepositTimerInterval); dogeDepositTimerInterval = null; }
     dogeCheckActive = false;
+    dogeDepositPolling = false;
   }
 
   async function dogeDepositCheck() {
@@ -763,7 +795,6 @@
 
       if ('Ok' in result) {
         logger.info('BTC balance update result:', result.Ok);
-        // Check if any were minted
         const minted = result.Ok.filter(s => 'Minted' in s);
         if (minted.length > 0) {
           logger.info('Minted new ckBTC:', minted);
@@ -779,8 +810,10 @@
           logger.warn('BTC balance update error:', err);
         }
       }
+      return result;
     } catch (e) {
       logger.error('Failed to update BTC balance:', e);
+      return null;
     }
   }
 
@@ -824,6 +857,73 @@
       logger.error('Failed to get ckBTC balance:', e);
     }
     loadingCkbtcBalance = false;
+  }
+
+  // BTC deposit check + progress functions
+  function startBtcDepositCheck() {
+    if (btcCheckActive) return;
+    btcCheckActive = true;
+    btcDepositStatus = null;
+    btcMinted = false;
+    btcPendingConfirmations = null;
+
+    btcDepositCheck();
+    btcCheckInterval = setInterval(btcDepositCheck, 30000); // every 30s
+    btcCheckTimeout = setTimeout(() => {
+      // After 5 min of no BTC detected, stop initial polling
+      if (!btcDepositPolling) stopBtcDepositCheck();
+    }, 300000);
+  }
+
+  function stopBtcDepositCheck() {
+    if (btcCheckInterval) { clearInterval(btcCheckInterval); btcCheckInterval = null; }
+    if (btcCheckTimeout) { clearTimeout(btcCheckTimeout); btcCheckTimeout = null; }
+    if (btcDepositTimerInterval) { clearInterval(btcDepositTimerInterval); btcDepositTimerInterval = null; }
+    btcCheckActive = false;
+    btcDepositPolling = false;
+  }
+
+  async function btcDepositCheck() {
+    const result = await updateBtcBalance();
+    if (!result) return;
+
+    if ('Ok' in result) {
+      const minted = result.Ok.filter(s => 'Minted' in s);
+      if (minted.length > 0) {
+        const totalSats = minted.reduce((sum, s) => sum + Number(s.Minted.minted_amount), 0);
+        btcMinted = true;
+        btcDepositStatus = { type: 'success', message: `${formatBtcBalance(totalSats)} deposited!` };
+        stopBtcDepositCheck();
+        loadCkbtcBalance();
+        return;
+      }
+    } else if ('Err' in result) {
+      const err = result.Err;
+      if ('NoNewUtxos' in err) {
+        const pending = err.NoNewUtxos.pending_utxos;
+        if (pending && pending.length > 0 && pending[0].length > 0) {
+          // BTC detected, waiting for confirmations — show progress
+          const bestConfirmations = Math.max(...pending[0].map(p => Number(p.confirmations)));
+          btcPendingConfirmations = bestConfirmations;
+          if (!btcDepositPolling) {
+            btcDepositPolling = true;
+            btcDepositStartTime = Date.now();
+            btcDepositElapsed = 0;
+            btcDepositTimerInterval = setInterval(() => {
+              btcDepositElapsed = Math.floor((Date.now() - btcDepositStartTime) / 1000);
+            }, 1000);
+          }
+          return;
+        }
+        // No pending UTXOs — BTC not detected yet
+      } else if ('AlreadyProcessing' in err) {
+        // Another call in progress, ignore
+        return;
+      } else {
+        btcDepositStatus = { type: 'error', message: 'Failed to check BTC deposit' };
+        stopBtcDepositCheck();
+      }
+    }
   }
 
   // Format satoshis to BTC
@@ -1199,7 +1299,62 @@
                   </button>
                 {/if}
               </div>
-              <span class="btc-note">BTC deposits require 6 confirmations (~1 hour)</span>
+
+              <!-- BTC deposit status + progress -->
+              {#if btcMinted}
+                <div class="deposit-status-row arrived">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  {btcDepositStatus?.message || 'BTC deposit complete!'}
+                </div>
+              {:else if btcDepositPolling}
+                <div class="deposit-progress-section btc">
+                  <div class="deposit-progress-header">
+                    <span class="spinner-tiny btc"></span>
+                    <div class="deposit-progress-text">
+                      <strong>Converting your BTC...</strong>
+                      <span class="deposit-progress-time">{formatElapsedTime(btcDepositElapsed)} elapsed (usually ~1 hour)</span>
+                    </div>
+                  </div>
+                  <div class="deposit-progress-bar">
+                    <div class="deposit-progress-fill btc" style="width: {btcPendingConfirmations !== null ? Math.min((btcPendingConfirmations / 6) * 100, 95) : Math.min((btcDepositElapsed / 3600) * 100, 95)}%"></div>
+                  </div>
+                  <div class="deposit-progress-steps">
+                    <div class="deposit-step completed"><span class="step-dot completed"></span> BTC sent</div>
+                    <div class="deposit-step active"><span class="step-dot active btc"></span> {btcPendingConfirmations ?? '?'}/6 confirmations <span class="step-time">~{btcPendingConfirmations != null ? Math.max(0, (6 - btcPendingConfirmations) * 10) : 60} min remaining</span></div>
+                    <div class="deposit-step"><span class="step-dot"></span> ckBTC minted <span class="step-time">~2 min</span></div>
+                    <div class="deposit-step"><span class="step-dot"></span> Available in balance</div>
+                  </div>
+                  <button class="why-wait-btn btc" onclick={() => showBtcWhyTheWait = !showBtcWhyTheWait}>
+                    {showBtcWhyTheWait ? 'Hide' : 'Why the wait?'}
+                  </button>
+                  {#if showBtcWhyTheWait}
+                    <div class="deposit-why-box btc">
+                      Your BTC is being converted to ckBTC via the Internet Computer's chain-key technology. This requires 6 Bitcoin network confirmations (~10 min each) for security. Your ckBTC is always backed 1:1 by native BTC held in a decentralized smart contract.
+                    </div>
+                  {/if}
+                </div>
+              {:else if btcDepositStatus?.type === 'error'}
+                <div class="deposit-status-row warning">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  {btcDepositStatus.message}
+                </div>
+              {:else if showBtcAddress && btcDepositAddress}
+                <button class="check-deposit-btn btc" onclick={startBtcDepositCheck} disabled={btcCheckActive}>
+                  {#if btcCheckActive}
+                    <span class="spinner-tiny btc"></span>
+                    Checking for deposit...
+                  {:else}
+                    Check for Deposit
+                  {/if}
+                </button>
+              {:else}
+                <span class="btc-note">BTC deposits require 6 confirmations (~1 hour)</span>
+              {/if}
 
               <!-- ETH Deposit -->
               <div class="deposit-item eth">
@@ -1240,21 +1395,31 @@
                   ETH deposit complete!
                 </div>
               {:else if ethSweepPolling}
-                <div class="eth-status-row converting">
-                  <span class="spinner-tiny eth"></span>
-                  Converting ETH... {formatElapsedTime(ethSweepElapsed)}
-                  <button class="why-wait-btn" onclick={() => showWhyTheWait = !showWhyTheWait}>
-                    {showWhyTheWait ? 'Hide' : 'Why?'}
-                  </button>
-                </div>
-                <div class="eth-progress-bar-mini">
-                  <div class="eth-progress-fill" style="width: {Math.min((ethSweepElapsed / 1200) * 100, 95)}%"></div>
-                </div>
-                {#if showWhyTheWait}
-                  <div class="eth-why-box">
-                    Your ETH is being locked on Ethereum and a digital twin is being minted to enable fast, low-fee poker. Always backed 1:1 by your native ETH. Fully decentralized.
+                <div class="deposit-progress-section eth">
+                  <div class="deposit-progress-header">
+                    <span class="spinner-tiny eth"></span>
+                    <div class="deposit-progress-text">
+                      <strong>Converting your ETH...</strong>
+                      <span class="deposit-progress-time">{formatElapsedTime(ethSweepElapsed)} elapsed (usually ~20 min)</span>
+                    </div>
                   </div>
-                {/if}
+                  <div class="deposit-progress-bar">
+                    <div class="deposit-progress-fill eth" style="width: {Math.min((ethSweepElapsed / 1200) * 100, 95)}%"></div>
+                  </div>
+                  <div class="deposit-progress-steps">
+                    <div class="deposit-step completed"><span class="step-dot completed"></span> ETH sent to minter</div>
+                    <div class="deposit-step active"><span class="step-dot active eth"></span> Waiting for Ethereum finality <span class="step-time">~{Math.max(0, 20 - Math.floor(ethSweepElapsed / 60))} min remaining</span></div>
+                    <div class="deposit-step"><span class="step-dot"></span> Available in balance</div>
+                  </div>
+                  <button class="why-wait-btn eth" onclick={() => showWhyTheWait = !showWhyTheWait}>
+                    {showWhyTheWait ? 'Hide' : 'Why the wait?'}
+                  </button>
+                  {#if showWhyTheWait}
+                    <div class="deposit-why-box eth">
+                      Your ETH is being locked on Ethereum and a digital twin (ckETH) is being minted to enable fast, low-fee poker. Always backed 1:1 by your native ETH. Fully decentralized — no bridges, no wrapping.
+                    </div>
+                  {/if}
+                </div>
               {:else if ethSweepStatus?.type === 'warning' || ethSweepStatus?.type === 'error'}
                 <div class="eth-status-row warning">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1312,16 +1477,42 @@
                 {/if}
               </div>
 
-              <!-- DOGE deposit status -->
+              <!-- DOGE deposit status + progress -->
               {#if dogeDepositStatus?.type === 'success'}
-                <div class="doge-status-row arrived">
+                <div class="deposit-status-row arrived">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                     <polyline points="20 6 9 17 4 12"/>
                   </svg>
                   {dogeDepositStatus.message}
                 </div>
+              {:else if dogeDepositPolling}
+                <div class="deposit-progress-section doge">
+                  <div class="deposit-progress-header">
+                    <span class="spinner-tiny doge"></span>
+                    <div class="deposit-progress-text">
+                      <strong>Checking for DOGE deposit...</strong>
+                      <span class="deposit-progress-time">{formatElapsedTime(dogeDepositElapsed)} elapsed (usually ~6 min)</span>
+                    </div>
+                  </div>
+                  <div class="deposit-progress-bar">
+                    <div class="deposit-progress-fill doge" style="width: {Math.min((dogeDepositElapsed / 360) * 100, 95)}%"></div>
+                  </div>
+                  <div class="deposit-progress-steps">
+                    <div class="deposit-step completed"><span class="step-dot completed"></span> DOGE sent</div>
+                    <div class="deposit-step active"><span class="step-dot active doge"></span> Waiting for confirmations <span class="step-time">~{Math.max(0, 6 - Math.floor(dogeDepositElapsed / 60))} min remaining</span></div>
+                    <div class="deposit-step"><span class="step-dot"></span> Available in balance</div>
+                  </div>
+                  <button class="why-wait-btn doge" onclick={() => showDogeWhyTheWait = !showDogeWhyTheWait}>
+                    {showDogeWhyTheWait ? 'Hide' : 'Why the wait?'}
+                  </button>
+                  {#if showDogeWhyTheWait}
+                    <div class="deposit-why-box doge">
+                      Your DOGE deposit needs to be confirmed on the Dogecoin network. This typically takes about 6 minutes for the required confirmations before it can be credited to your account.
+                    </div>
+                  {/if}
+                </div>
               {:else if dogeDepositStatus?.type === 'error'}
-                <div class="doge-status-row warning">
+                <div class="deposit-status-row warning">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                     <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -1329,20 +1520,15 @@
                   {dogeDepositStatus.message}
                 </div>
               {:else if showDogeAddress && dogeDepositAddress}
-                <button
-                  class="check-deposit-btn doge"
-                  onclick={startDogeDepositCheck}
-                  disabled={dogeCheckActive}
-                >
+                <button class="check-deposit-btn doge" onclick={startDogeDepositCheck} disabled={dogeCheckActive}>
                   {#if dogeCheckActive}
                     <span class="spinner-tiny doge"></span>
-                    Waiting for deposit...
+                    Checking for deposit...
                   {:else}
                     Check for Deposit
                   {/if}
                 </button>
-              {/if}
-              {#if !showDogeAddress || !dogeDepositAddress}
+              {:else}
                 <span class="doge-note">Send native DOGE - confirmed in ~6 min</span>
               {/if}
               {/if}
@@ -1872,13 +2058,128 @@
     font-size: 11px;
   }
 
-  .btc-note {
+  .btc-note, .doge-note {
     display: block;
     color: #666;
     font-size: 10px;
     margin-top: 4px;
     font-style: italic;
   }
+
+  /* Shared deposit progress styles */
+  .deposit-progress-section {
+    margin-top: 6px;
+    padding: 10px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .deposit-progress-section.btc { background: rgba(247, 147, 26, 0.06); border: 1px solid rgba(247, 147, 26, 0.15); }
+  .deposit-progress-section.eth { background: rgba(98, 126, 234, 0.06); border: 1px solid rgba(98, 126, 234, 0.15); }
+  .deposit-progress-section.doge { background: rgba(194, 166, 51, 0.06); border: 1px solid rgba(194, 166, 51, 0.15); }
+
+  .deposit-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .deposit-progress-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .deposit-progress-text strong {
+    color: #fff;
+    font-size: 11px;
+  }
+  .deposit-progress-time {
+    color: #888;
+    font-size: 10px;
+  }
+
+  .deposit-progress-bar {
+    height: 3px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .deposit-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s linear;
+  }
+  .deposit-progress-fill.btc { background: linear-gradient(90deg, #F7931A, #FDB93C); }
+  .deposit-progress-fill.eth { background: linear-gradient(90deg, #627EEA, #8B9CF7); }
+  .deposit-progress-fill.doge { background: linear-gradient(90deg, #C2A633, #E0C84A); }
+
+  .deposit-progress-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-left: 2px;
+  }
+  .deposit-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: #555;
+  }
+  .deposit-step.completed { color: #4ade80; }
+  .deposit-step.active { color: #aaa; }
+  .step-time { color: #666; font-style: italic; margin-left: 2px; }
+
+  .step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1.5px solid #444;
+    flex-shrink: 0;
+  }
+  .step-dot.completed { background: #4ade80; border-color: #4ade80; }
+  .step-dot.active { background: transparent; animation: pulse-step 1.5s ease-in-out infinite; }
+  .step-dot.active.btc { border-color: #F7931A; box-shadow: 0 0 6px rgba(247, 147, 26, 0.5); }
+  .step-dot.active.eth { border-color: #627EEA; box-shadow: 0 0 6px rgba(98, 126, 234, 0.5); }
+  .step-dot.active.doge { border-color: #C2A633; box-shadow: 0 0 6px rgba(194, 166, 51, 0.5); }
+
+  @keyframes pulse-step {
+    0%, 100% { box-shadow: 0 0 3px rgba(255, 255, 255, 0.2); }
+    50% { box-shadow: 0 0 8px rgba(255, 255, 255, 0.5); }
+  }
+
+  .deposit-why-box {
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    font-size: 10px;
+    color: #888;
+    line-height: 1.5;
+  }
+  .deposit-why-box.btc { border: 1px solid rgba(247, 147, 26, 0.15); }
+  .deposit-why-box.eth { border: 1px solid rgba(98, 126, 234, 0.15); }
+  .deposit-why-box.doge { border: 1px solid rgba(194, 166, 51, 0.15); }
+
+  .deposit-status-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    margin-top: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+  }
+  .deposit-status-row.arrived { color: #4ade80; background: rgba(74, 222, 128, 0.1); }
+  .deposit-status-row.warning { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+
+  /* BTC-specific deposit styles */
+  .check-deposit-btn.btc { border-color: rgba(247, 147, 26, 0.3); color: #F7931A; background: rgba(247, 147, 26, 0.1); }
+  .check-deposit-btn.btc:hover:not(:disabled) { background: rgba(247, 147, 26, 0.2); }
+  .spinner-tiny.btc { border-color: rgba(247, 147, 26, 0.3); border-top-color: #F7931A; }
+  .why-wait-btn.btc { color: #F7931A; }
+  .why-wait-btn.eth { color: #627EEA; }
+  .why-wait-btn.doge { color: #C2A633; }
 
   /* ETH styles */
   .balance-row.eth {
@@ -2032,31 +2333,7 @@
     margin-left: auto;
   }
 
-  .eth-progress-bar-mini {
-    height: 3px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 2px;
-    overflow: hidden;
-    margin-top: 4px;
-  }
-
-  .eth-progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #627EEA, #8B9CF7);
-    border-radius: 2px;
-    transition: width 1s linear;
-  }
-
-  .eth-why-box {
-    margin-top: 6px;
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(98, 126, 234, 0.15);
-    border-radius: 6px;
-    font-size: 10px;
-    color: #888;
-    line-height: 1.5;
-  }
+  /* Legacy ETH progress styles removed — now uses shared .deposit-progress-* classes */
 
   /* DOGE styles */
   .balance-label.doge, .deposit-label.doge { color: #C2A633; }
@@ -2065,17 +2342,9 @@
   .show-address-btn.doge { border-color: rgba(194, 166, 51, 0.3); color: #C2A633; }
   .show-address-btn.doge:hover { background: rgba(194, 166, 51, 0.1); }
   .copy-btn.doge { border-color: rgba(194, 166, 51, 0.3); color: #C2A633; }
-  .check-deposit-btn.doge { border-color: rgba(194, 166, 51, 0.3); color: #C2A633; }
-  .check-deposit-btn.doge:hover { background: rgba(194, 166, 51, 0.1); }
+  .check-deposit-btn.doge { border-color: rgba(194, 166, 51, 0.3); color: #C2A633; background: rgba(194, 166, 51, 0.1); }
+  .check-deposit-btn.doge:hover:not(:disabled) { background: rgba(194, 166, 51, 0.2); }
   .spinner-tiny.doge { border-color: rgba(194, 166, 51, 0.3); border-top-color: #C2A633; }
-  .doge-note { font-size: 10px; color: #666; margin-top: 2px; }
-
-  .doge-status-row {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 11px; margin-top: 4px; padding: 4px 8px; border-radius: 6px;
-  }
-  .doge-status-row.arrived { color: #4ade80; background: rgba(74, 222, 128, 0.1); }
-  .doge-status-row.warning { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
 
   .dropdown-btn {
     width: 100%;
