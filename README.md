@@ -141,7 +141,7 @@ Every shuffle uses a commit-reveal scheme:
 | Table 3 | `hy7cv-oqaaa-aaaad-afzkq-cai` | 9-max 0.10/0.20 ICP |
 | BTC Table | `f6hqy-haaaa-aaaad-afzhq-cai` | Heads-up 100/200 sats |
 | ETH Table | `ghxrc-niaaa-aaaad-afzoa-cai` | Heads-up 0.00005/0.0001 ETH |
-| DOGE Table | `g2t6e-myaaa-aaaad-afzoq-cai` | Heads-up 5/10 DOGE |
+| DOGE Table | `g2t6e-myaaa-aaaad-afzoq-cai` | Heads-up 0.1/0.2 DOGE |
 
 ---
 
@@ -373,7 +373,7 @@ Defined in `icp.yaml` via `init_args`. Current tables:
 | Table 3 | ICP | 0.10 | 0.20 | 9 |
 | BTC Table | BTC | 100 sats | 200 sats | 2 (Heads-up) |
 | ETH Table | ETH | 0.00005 | 0.0001 | 2 (Heads-up) |
-| DOGE Table | DOGE | 5 | 10 | 2 (Heads-up) |
+| DOGE Table | DOGE | 0.1 | 0.2 | 2 (Heads-up) |
 
 ---
 
