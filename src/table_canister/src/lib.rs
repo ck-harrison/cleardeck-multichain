@@ -6103,12 +6103,37 @@ async fn check_doge_deposit() -> Result<Vec<DogeDepositStatus>, String> {
         return Err("Please log in with Internet Identity.".to_string());
     }
 
+    // Rate limit deposit checks (5 per minute per user)
+    let now = ic_cdk::api::time();
+    let rate_limited = DEPOSIT_RATE_LIMITS.with(|r| {
+        let mut limits = r.borrow_mut();
+        let minute_ns: u64 = 60_000_000_000;
+        if let Some((window_start, count)) = limits.get_mut(&caller) {
+            if now > *window_start + minute_ns {
+                *window_start = now;
+                *count = 1;
+                false
+            } else if *count >= MAX_DEPOSIT_VERIFICATIONS_PER_MINUTE {
+                true
+            } else {
+                *count += 1;
+                false
+            }
+        } else {
+            limits.insert(caller, (now, 1));
+            false
+        }
+    });
+    if rate_limited {
+        return Err("Too many deposit check attempts. Please wait a minute.".to_string());
+    }
+
     let currency = get_table_currency();
     if currency != Currency::DOGE {
         return Err("This function is only available for DOGE tables".to_string());
     }
 
-    // First get the user's DOGE address
+    // Derive the user's DOGE address via threshold ECDSA
     let address = get_doge_deposit_address().await?;
 
     // Query the Dogecoin canister for UTXOs
@@ -6121,10 +6146,11 @@ async fn check_doge_deposit() -> Result<Vec<DogeDepositStatus>, String> {
         network: DogeNetwork::Mainnet,
     };
 
-    let result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::call(
+    let result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::api::call::call_with_payment128(
         dogecoin_canister,
         "dogecoin_get_utxos",
         (utxo_args,),
+        10_000_000_000, // 10B cycles required by Dogecoin canister
     ).await;
 
     let (utxo_response,) = result.map_err(|(code, msg)| format!("Dogecoin canister error: {:?} - {}", code, msg))?;
@@ -6171,6 +6197,90 @@ async fn check_doge_deposit() -> Result<Vec<DogeDepositStatus>, String> {
     }
 
     Ok(statuses)
+}
+
+/// Move DOGE from internal wallet (DOGE_BALANCES) to table escrow (BALANCES)
+/// This bridges the gap between DOGE deposits and the buy-in system
+#[ic_cdk::update]
+fn deposit_doge_to_table(amount: u64) -> Result<u64, String> {
+    let caller = ic_cdk::api::msg_caller();
+    if caller == Principal::anonymous() {
+        return Err("Anonymous callers cannot perform this action".to_string());
+    }
+    check_rate_limit()?;
+
+    let currency = get_table_currency();
+    if currency != Currency::DOGE {
+        return Err("This function is only available for DOGE tables".to_string());
+    }
+
+    if amount == 0 {
+        return Err("Amount must be greater than zero".to_string());
+    }
+
+    // Deduct from DOGE wallet balance
+    let deducted = DOGE_BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let balance = balances.entry(caller).or_insert(0);
+        if *balance < amount {
+            return Err(format!("Insufficient DOGE balance. Have: {}, need: {}",
+                currency.format_amount(*balance), currency.format_amount(amount)));
+        }
+        *balance = balance.saturating_sub(amount);
+        Ok(amount)
+    })?;
+
+    // Credit to table escrow
+    let new_escrow = BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let escrow = balances.entry(caller).or_insert(0);
+        *escrow = escrow.saturating_add(deducted);
+        *escrow
+    });
+
+    Ok(new_escrow)
+}
+
+/// Withdraw DOGE from table escrow back to internal DOGE wallet balance
+/// This is the reverse of deposit_doge_to_table
+#[ic_cdk::update]
+fn withdraw_doge_from_table(amount: u64) -> Result<u64, String> {
+    let caller = ic_cdk::api::msg_caller();
+    if caller == Principal::anonymous() {
+        return Err("Anonymous callers cannot perform this action".to_string());
+    }
+    check_rate_limit()?;
+
+    let currency = get_table_currency();
+    if currency != Currency::DOGE {
+        return Err("This function is only available for DOGE tables".to_string());
+    }
+
+    if amount == 0 {
+        return Err("Amount must be greater than zero".to_string());
+    }
+
+    // Deduct from table escrow
+    BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let escrow = balances.entry(caller).or_insert(0);
+        if *escrow < amount {
+            return Err(format!("Insufficient table balance. Have: {}, need: {}",
+                currency.format_amount(*escrow), currency.format_amount(amount)));
+        }
+        *escrow = escrow.saturating_sub(amount);
+        Ok(())
+    })?;
+
+    // Credit to DOGE wallet balance
+    let new_wallet = DOGE_BALANCES.with(|b| {
+        let mut balances = b.borrow_mut();
+        let balance = balances.entry(caller).or_insert(0);
+        *balance = balance.saturating_add(amount);
+        *balance
+    });
+
+    Ok(new_wallet)
 }
 
 /// Get the user's internal DOGE wallet balance (not table escrow)
@@ -6254,10 +6364,11 @@ async fn withdraw_doge(destination: String, amount: u64) -> Result<String, Strin
         network: DogeNetwork::Mainnet,
     };
 
-    let utxo_result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::call(
+    let utxo_result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::api::call::call_with_payment128(
         dogecoin_canister,
         "dogecoin_get_utxos",
         (utxo_args,),
+        10_000_000_000, // 10B cycles required by Dogecoin canister
     ).await;
     let (utxo_response,) = utxo_result.map_err(|(code, msg)| format!("UTXO query error: {:?} - {}", code, msg))?;
 
@@ -6411,10 +6522,11 @@ async fn withdraw_doge(destination: String, amount: u64) -> Result<String, Strin
         network: DogeNetwork::Mainnet,
     };
 
-    let send_result: Result<((),), _> = ic_cdk::call(
+    let send_result: Result<((),), _> = ic_cdk::api::call::call_with_payment128(
         dogecoin_canister,
         "dogecoin_send_transaction",
         (send_args,),
+        10_000_000_000, // 10B cycles required by Dogecoin canister
     ).await;
 
     if let Err((code, msg)) = send_result {

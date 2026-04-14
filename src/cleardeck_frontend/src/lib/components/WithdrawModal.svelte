@@ -12,8 +12,9 @@
   // Currency-specific settings
   const isBTC = currency === 'BTC';
   const isETH = currency === 'ETH';
-  const currencySymbol = isBTC ? 'BTC' : isETH ? 'ETH' : 'ICP';
-  const minWithdrawal = isBTC ? 11n : isETH ? 10_000_000_000_000n : 100000n;
+  const isDOGE = currency === 'DOGE';
+  const currencySymbol = isBTC ? 'BTC' : isETH ? 'ETH' : isDOGE ? 'DOGE' : 'ICP';
+  const minWithdrawal = isBTC ? 11n : isETH ? 10_000_000_000_000n : isDOGE ? 1n : 100000n;
 
   // Format balance for display
   function formatBalance(smallestUnit) {
@@ -31,6 +32,9 @@
       if (eth >= 0.0001) return `${eth.toFixed(6)} ETH`;
       const gwei = num / 1_000_000_000;
       return `${gwei.toFixed(2)} Gwei`;
+    }
+    if (isDOGE) {
+      return `${(num / 100_000_000).toFixed(4)} DOGE`;
     }
     return (num / 100_000_000).toFixed(4);
   }
@@ -80,9 +84,14 @@
     success = null;
 
     try {
-      const result = await tableActor.withdraw(amountSmallest);
+      const result = isDOGE
+        ? await tableActor.withdraw_doge_from_table(amountSmallest)
+        : await tableActor.withdraw(amountSmallest);
       if ('Ok' in result) {
-        success = `Withdrawal successful! ${formatWithUnit(result.Ok)} sent to your wallet.`;
+        const msg = isDOGE
+          ? `Withdrew ${(Number(amountSmallest) / 100_000_000).toFixed(4)} DOGE to your wallet balance.`
+          : `Withdrawal successful! ${formatWithUnit(result.Ok)} sent to your wallet.`;
+        success = msg;
         setTimeout(() => {
           onWithdrawSuccess?.();
           onClose();
@@ -159,13 +168,13 @@
         <input
           id="withdraw-amount"
           type="number"
-          step={isBTC ? (inputUnit === 'sats' ? "1" : "0.00000001") : isETH ? "0.000001" : "0.0001"}
-          min={isBTC ? (inputUnit === 'sats' ? "1000" : "0.00001") : isETH ? "0.00001" : "0.001"}
-          placeholder={isBTC ? (inputUnit === 'sats' ? "1000" : "0.00000000") : isETH ? "0.000000" : "0.0000"}
+          step={isBTC ? (inputUnit === 'sats' ? "1" : "0.00000001") : isETH ? "0.000001" : isDOGE ? "0.01" : "0.0001"}
+          min={isBTC ? (inputUnit === 'sats' ? "1000" : "0.00001") : isETH ? "0.00001" : isDOGE ? "0.01" : "0.001"}
+          placeholder={isBTC ? (inputUnit === 'sats' ? "1000" : "0.00000000") : isETH ? "0.000000" : isDOGE ? "0.00" : "0.0000"}
           bind:value={withdrawAmount}
           disabled={processing}
         />
-        <span class="input-suffix" class:btc={isBTC} class:eth={isETH}>{isBTC ? inputUnit : isETH ? 'ETH' : 'ICP'}</span>
+        <span class="input-suffix" class:btc={isBTC} class:eth={isETH}>{isBTC ? inputUnit : isETH ? 'ETH' : isDOGE ? 'DOGE' : 'ICP'}</span>
         <button class="max-btn" class:btc={isBTC} class:eth={isETH} onclick={setMaxAmount} disabled={processing}>
           MAX
         </button>
@@ -175,6 +184,8 @@
           Minimum: 1,000 sats (Fee: 10 sats)
         {:else if isETH}
           Minimum: 0.00001 ETH (Fee: 0.000002 ETH)
+        {:else if isDOGE}
+          Moves DOGE from table escrow back to your wallet balance.
         {:else}
           Minimum withdrawal: 0.001 ICP. A small network fee applies.
         {/if}
@@ -235,6 +246,11 @@
         <p>
           ckETH (Ethereum on ICP) will be sent to your wallet. You can convert it to real ETH
           through the NNS or use it directly on ICP apps.
+        </p>
+      {:else if isDOGE}
+        <p>
+          DOGE will be moved from table escrow back to your DOGE wallet balance.
+          You can then withdraw to an external Dogecoin address from the sidebar.
         </p>
       {:else}
         <p>

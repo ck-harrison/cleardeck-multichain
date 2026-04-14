@@ -362,6 +362,10 @@ service : (TableConfig) -> {
   check_doge_deposit : () -> (variant { Ok : vec DogeDepositStatus; Err : text });
   // DOGE: Get user's internal DOGE wallet balance (not table escrow)
   get_doge_balance : () -> (nat64) query;
+  // DOGE: Move DOGE from internal wallet balance to table escrow for buy-in
+  deposit_doge_to_table : (nat64) -> (variant { Ok : nat64; Err : text });
+  // DOGE: Move DOGE from table escrow back to internal wallet balance
+  withdraw_doge_from_table : (nat64) -> (variant { Ok : nat64; Err : text });
   // DOGE: Withdraw DOGE to an external Dogecoin address
   // Builds and signs a P2PKH transaction via threshold ECDSA
   withdraw_doge : (text, nat64) -> (variant { Ok : text; Err : text });

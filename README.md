@@ -4,7 +4,7 @@
 
 > **This entire project was built 100% by AI** (Claude Code) to demonstrate what's possible with AI-assisted development and the Internet Computer blockchain.
 
-ClearDeck is a fully decentralized Texas Hold'em poker application running entirely on the Internet Computer. Play with ICP, Bitcoin, or Ethereum — all powered by ICP's chain fusion technology. Every card shuffle is cryptographically verifiable, ensuring fair play without requiring trust. No middleman, no house edge — just pure poker.
+ClearDeck is a fully decentralized Texas Hold'em poker application running entirely on the Internet Computer. Play with ICP, Bitcoin, Ethereum, or Dogecoin — all powered by ICP's chain fusion technology. Every card shuffle is cryptographically verifiable, ensuring fair play without requiring trust. No middleman, no house edge — just pure poker.
 
 ## Screenshots
 
@@ -28,13 +28,14 @@ ClearDeck is a fully decentralized Texas Hold'em poker application running entir
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-Currency** | Play with ICP, Bitcoin (via ckBTC), or Ethereum (via ckETH) |
-| **Native ETH Deposits** | Send ETH to a unique address — auto-converts to ckETH for gameplay |
+| **Multi-Currency** | Play with ICP, Bitcoin (via ckBTC), Ethereum (via ckETH), or Dogecoin (via ckDOGE) |
+| **Native Crypto Deposits** | Send ETH or DOGE to a unique address — auto-converts for gameplay |
 | **No Wallet Required** | No MetaMask, no WalletConnect — just send crypto to an address |
 | **Provably Fair** | Every shuffle cryptographically verifiable |
 | **100% On-Chain** | Frontend, backend, and game logic all on IC |
 | **Decentralized Auth** | Internet Identity — no passwords |
-| **Instant Deposits** | Direct ledger transfers for ICP/ckBTC/ckETH |
+| **Instant Deposits** | Direct ledger transfers for ICP/ckBTC/ckETH/ckDOGE |
+| **Auto-Deal Countdown** | Visual countdown timer between hands — no manual dealing |
 | **Hand History** | Review all past hands with proofs |
 | **Time Bank** | Extra time for tough decisions |
 | **Multiple Tables** | Heads-up, 6-max, 9-max configurations |
@@ -44,7 +45,7 @@ ClearDeck is a fully decentralized Texas Hold'em poker application running entir
 
 ## Chain Fusion: Multi-Currency Support
 
-ClearDeck showcases the power of ICP's chain fusion — holding and transacting with BTC, ETH, and ICP assets inside a single dapp with no bridges, no wrapping, and no external wallet connections.
+ClearDeck showcases the power of ICP's chain fusion — holding and transacting with BTC, ETH, DOGE, and ICP assets inside a single dapp with no bridges, no wrapping, and no external wallet connections.
 
 ### ICP Tables
 - Direct ICP ledger deposits and withdrawals
@@ -61,6 +62,13 @@ ClearDeck showcases the power of ICP's chain fusion — holding and transacting 
 - ckETH minted 1:1 after ~20 minutes (Ethereum finality)
 - Presented as "ETH" throughout the UI — the ckETH abstraction is invisible
 - No MetaMask, no WalletConnect, no bridge UI — just "send to address" like Bitcoin
+
+### DOGE Tables (ckDOGE)
+- **Unique Dogecoin address per user** via ICP threshold ECDSA + P2PKH
+- Send native DOGE to your address — the canister detects deposits via Dogecoin API
+- ckDOGE minted after ~6 confirmations (~6 minutes)
+- Presented as "DOGE" throughout the UI
+- Withdraw back to real DOGE anytime via threshold ECDSA-signed P2PKH transactions
 
 **How ETH deposits work under the hood:**
 ```
@@ -83,11 +91,12 @@ User plays poker with their ETH (represented as ckETH on-chain)
 |-------|------------|
 | **Frontend** | SvelteKit 5, Vite, TypeScript, SCSS |
 | **Backend** | Rust, IC CDK 0.19, Candid |
-| **Blockchain** | Internet Computer, ckBTC, ckETH |
+| **Blockchain** | Internet Computer, ckBTC, ckETH, ckDOGE |
 | **Auth** | Internet Identity |
 | **Crypto** | SHA-256, IC VRF (threshold BLS), threshold ECDSA |
 | **Payments** | ICRC-1/ICRC-2 ledger standards |
 | **ETH Integration** | EVM RPC canister, alloy-consensus (EIP-1559), k256 |
+| **DOGE Integration** | Dogecoin API, threshold ECDSA (P2PKH), Bitcoin script |
 
 ---
 
@@ -104,7 +113,7 @@ User plays poker with their ETH (represented as ckETH on-chain)
 - **Backend**: All game logic in Rust smart contracts
 - **Authentication**: Internet Identity (decentralized)
 - **Randomness**: IC's Verifiable Random Function (VRF)
-- **Payments**: Real ICP, Bitcoin (via ckBTC), and Ethereum (via ckETH)
+- **Payments**: Real ICP, Bitcoin (via ckBTC), Ethereum (via ckETH), and Dogecoin (via ckDOGE)
 
 ### Provably Fair
 Every shuffle uses a commit-reveal scheme:
@@ -112,10 +121,11 @@ Every shuffle uses a commit-reveal scheme:
 2. After hand: Full seed is revealed
 3. Anyone can verify: Recalculate the shuffle yourself
 
-### Triple Currency Support
+### Quad Currency Support
 - **ICP Tables**: Play with Internet Computer tokens
 - **BTC Tables**: Play with Bitcoin (via ckBTC)
 - **ETH Tables**: Play with Ethereum (via ckETH) — native ETH deposits with threshold ECDSA
+- **DOGE Tables**: Play with Dogecoin (via ckDOGE) — native DOGE deposits with threshold ECDSA
 
 ---
 
@@ -131,7 +141,7 @@ Every shuffle uses a commit-reveal scheme:
 | Table 3 | `hy7cv-oqaaa-aaaad-afzkq-cai` | 9-max 0.10/0.20 ICP |
 | BTC Table | `f6hqy-haaaa-aaaad-afzhq-cai` | Heads-up 100/200 sats |
 | ETH Table | `ghxrc-niaaa-aaaad-afzoa-cai` | Heads-up 0.0001/0.0002 ETH |
-| DOGE Table | `52zr7-xiaaa-aaaad-af4bq-cai` | Heads-up 10/20 DOGE |
+| DOGE Table | `g2t6e-myaaa-aaaad-afzoq-cai` | Heads-up 0.1/0.2 DOGE |
 
 ---
 
@@ -341,25 +351,44 @@ Table Canister → ICRC-1 transfer → Player Wallet
 5. **Play**: Use ckETH at the table (displayed as "ETH")
 6. **Withdraw**: Convert back to native ETH via ckETH minter
 
+### ckDOGE Integration (Native DOGE Deposits)
+
+1. **Get DOGE address**: Threshold ECDSA derives a unique P2PKH Dogecoin address per user
+2. **Send DOGE**: User sends native DOGE from any wallet
+3. **Detect deposit**: Canister checks balance via Dogecoin API
+4. **Credit balance**: After 6 confirmations (~6 min), DOGE balance credited
+5. **Play**: Use DOGE at the table
+6. **Withdraw**: Canister builds and signs P2PKH transaction via threshold ECDSA
+
 ---
 
 ## Table Configuration
 
-Defined in `icp.yaml` via `init_args`. See the config file for all table configurations (ICP, BTC, ETH, DOGE).
+Defined in `icp.yaml` via `init_args`. Current tables:
+
+| Table | Currency | Small Blind | Big Blind | Seats |
+|-------|----------|-------------|-----------|-------|
+| Table 1 | ICP | 0.01 | 0.02 | 2 (Heads-up) |
+| Table 2 | ICP | 0.05 | 0.10 | 6 |
+| Table 3 | ICP | 0.10 | 0.20 | 9 |
+| BTC Table | BTC | 100 sats | 200 sats | 2 (Heads-up) |
+| ETH Table | ETH | 0.0001 | 0.0002 | 2 (Heads-up) |
+| DOGE Table | DOGE | 0.1 | 0.2 | 2 (Heads-up) |
 
 ---
 
 ## Game Features
 
-- **Multi-Currency**: ICP, Bitcoin, and Ethereum deposits/withdrawals
+- **Multi-Currency**: ICP, Bitcoin, Ethereum, and Dogecoin deposits/withdrawals
 - **Provably Fair**: Every shuffle verifiable
 - **Time Bank**: 30s extra time for tough decisions
-- **Auto-Deal**: Hands start automatically
+- **Auto-Deal with Countdown**: Visual countdown timer between hands — no manual dealing needed
 - **Hand History**: Review all past hands with proofs
 - **Sit Out**: Take breaks without leaving
 - **Side Pots**: Proper all-in handling
 - **Display Names**: Custom nicknames (1-12 chars)
 - **Bust Animations**: Canvas-based fireworks and rain cloud effects
+- **Deposit Instructions**: In-app guide for depositing each currency
 
 ---
 
@@ -398,6 +427,21 @@ get_eth_deposit_address : () -> (variant { Ok : EthDepositInfo; Err : text });
 
 // ETH: Sweep deposited ETH to ckETH minter
 sweep_eth_to_cketh : () -> (variant { Ok : SweepStatus; Err : text });
+
+// DOGE: Get unique Dogecoin deposit address
+get_doge_deposit_address : () -> (variant { Ok : text; Err : text });
+
+// DOGE: Check for new DOGE deposits
+check_doge_deposit : () -> (variant { Ok : vec DogeDepositStatus; Err : text });
+
+// DOGE: Move DOGE from wallet to table escrow
+deposit_doge_to_table : (nat64) -> (variant { Ok : nat64; Err : text });
+
+// DOGE: Move DOGE from table escrow back to wallet
+withdraw_doge_from_table : (nat64) -> (variant { Ok : nat64; Err : text });
+
+// DOGE: Withdraw to external Dogecoin address
+withdraw_doge : (text, nat64) -> (variant { Ok : text; Err : text });
 ```
 
 ### History Canister
@@ -419,23 +463,24 @@ verify_hand_shuffle : (hand_id: nat64) -> (Result<bool, text>);
 ## Security Considerations
 
 1. **Unaudited Code**: This is alpha software — expect bugs
-2. **Stable Storage**: Uses stable memory for upgrades, but bugs can still cause data loss
-3. **Canister Cycles**: Monitor cycles — if depleted, canisters stop
-4. **Key Security**: Controller identity must be secured
-5. **No Rake**: There's no house edge — this is purely peer-to-peer
-6. **Threshold ECDSA**: ETH addresses are derived from ICP subnet keys — the canister never holds private keys directly
+2. **Security Hardened**: Rate limiting on all update calls, reentrancy-safe withdrawals, anonymous caller rejection, overflow-safe arithmetic
+3. **Stable Storage**: Uses stable memory for upgrades — `pre_upgrade` panics on failure to prevent silent data loss
+4. **Canister Cycles**: Monitor cycles — if depleted, canisters stop
+5. **Key Security**: Controller identity must be secured
+6. **No Rake**: There's no house edge — this is purely peer-to-peer
+7. **Threshold ECDSA**: ETH and DOGE addresses are derived from ICP subnet keys — the canister never holds private keys directly
 
 ---
 
 ## Known Issues
 
-- Hand history may be lost during canister upgrades (stable memory limitations)
 - BTC deposits require 6 confirmations (~1 hour)
 - ETH deposits require ~20 minutes for ckETH minting (Ethereum finality)
+- DOGE deposits require 6 confirmations (~6 minutes)
 - Large pots may have rounding issues (e8s precision)
 - UI may lag on slow connections (polling-based updates)
 - History canister indexes grow unboundedly (long-term memory concern)
-- ETH address derivation takes a few seconds on first load (threshold ECDSA call)
+- ETH/DOGE address derivation takes a few seconds on first load (threshold ECDSA call)
 
 ---
 
@@ -443,8 +488,9 @@ verify_hand_shuffle : (hand_id: nat64) -> (Result<bool, text>);
 
 - **Backend**: Rust, IC CDK 0.19, SHA256, ICRC-1/ICRC-2, threshold ECDSA, EVM RPC
 - **Frontend**: SvelteKit 5, Vite, SCSS
-- **Blockchain**: Internet Computer, ckBTC, ckETH
+- **Blockchain**: Internet Computer, ckBTC, ckETH, ckDOGE
 - **ETH Libraries**: alloy-consensus, k256, sha3 (keccak256)
+- **DOGE Libraries**: Bitcoin script (P2PKH), threshold ECDSA
 - **Auth**: Internet Identity
 - **AI**: Claude Code (100% AI-generated code)
 
@@ -487,6 +533,7 @@ claude
 ### Ideas for Extensions
 
 - **ckSOL Integration**: Solana deposits via future ckSOL minter
+- **ckLTC Integration**: Litecoin deposits (similar P2PKH pattern to DOGE)
 - **Tournaments**: Multi-table tournament support
 - **Chat**: In-game messaging
 - **Avatars**: NFT avatar integration
@@ -522,7 +569,8 @@ MIT License
 - **Internet Computer**: [internetcomputer.org](https://internetcomputer.org/)
 - **ckBTC**: [internetcomputer.org/ckbtc](https://internetcomputer.org/ckbtc)
 - **ckETH**: [internetcomputer.org/cketh](https://internetcomputer.org/cketh)
+- **ckDOGE**: [github.com/nickcen/ckdoge](https://github.com/nickcen/ckdoge)
 
 ---
 
-**ClearDeck** — No middleman, no house. Multi-chain poker powered by ICP chain fusion, built by AI.
+**ClearDeck** — No middleman, no house. Four-chain poker powered by ICP chain fusion, built by AI.
