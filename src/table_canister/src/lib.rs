@@ -6103,12 +6103,37 @@ async fn check_doge_deposit() -> Result<Vec<DogeDepositStatus>, String> {
         return Err("Please log in with Internet Identity.".to_string());
     }
 
+    // Rate limit deposit checks (5 per minute per user)
+    let now = ic_cdk::api::time();
+    let rate_limited = DEPOSIT_RATE_LIMITS.with(|r| {
+        let mut limits = r.borrow_mut();
+        let minute_ns: u64 = 60_000_000_000;
+        if let Some((window_start, count)) = limits.get_mut(&caller) {
+            if now > *window_start + minute_ns {
+                *window_start = now;
+                *count = 1;
+                false
+            } else if *count >= MAX_DEPOSIT_VERIFICATIONS_PER_MINUTE {
+                true
+            } else {
+                *count += 1;
+                false
+            }
+        } else {
+            limits.insert(caller, (now, 1));
+            false
+        }
+    });
+    if rate_limited {
+        return Err("Too many deposit check attempts. Please wait a minute.".to_string());
+    }
+
     let currency = get_table_currency();
     if currency != Currency::DOGE {
         return Err("This function is only available for DOGE tables".to_string());
     }
 
-    // First get the user's DOGE address
+    // Derive the user's DOGE address via threshold ECDSA
     let address = get_doge_deposit_address().await?;
 
     // Query the Dogecoin canister for UTXOs

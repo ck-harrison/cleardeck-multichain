@@ -389,6 +389,7 @@
       return IDL.Service({
         get_eth_deposit_address: IDL.Func([], [IDL.Variant({ Ok: EthDepositInfo, Err: IDL.Text })], []),
         sweep_eth_to_cketh: IDL.Func([], [IDL.Variant({ Ok: SweepStatus, Err: IDL.Text })], []),
+        claim_external_deposit: IDL.Func([], [IDL.Variant({ Ok: IDL.Nat64, Err: IDL.Text })], []),
         get_balance: IDL.Func([], [IDL.Nat64], ['query']),
       });
     };
@@ -510,11 +511,22 @@
     const actor = getEthTableActor();
     if (!actor) return;
     try {
+      // Try to claim ckETH from the ledger into the canister's internal balance.
+      // The ckETH minter mints to the user's principal on the ckETH ledger,
+      // but the canister needs claim_external_deposit() to pull it in.
+      const claimResult = await actor.claim_external_deposit();
+      if ('Ok' in claimResult && claimResult.Ok > 0n) {
+        ethCkethArrived = true;
+        stopEthCkethPolling();
+        loadCkethBalance();
+        return;
+      }
+
+      // Fallback: check if balance appeared via another path
       const balance = await actor.get_balance();
       if (balance > 0n) {
         ethCkethArrived = true;
         stopEthCkethPolling();
-        // Refresh the ckETH balance display
         loadCkethBalance();
       }
     } catch (e) {
@@ -597,7 +609,8 @@
 
     dogeDepositCheck();
     dogeCheckInterval = setInterval(dogeDepositCheck, 15000);
-    dogeCheckTimeout = setTimeout(stopDogeDepositCheck, 120000);
+    // DOGE needs 6 confirmations at ~1 min/block = ~6 min; allow 10 min for safety
+    dogeCheckTimeout = setTimeout(stopDogeDepositCheck, 600000);
   }
 
   function stopDogeDepositCheck() {

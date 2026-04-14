@@ -124,6 +124,16 @@
   let showDepositModal = $state(false);
   let showWithdrawModal = $state(false);
 
+  // Helper: extract canister ID string from Principal or opt array
+  function getCanisterId(cid) {
+    if (!cid) return null;
+    // Handle bindgen opt format: Principal | undefined
+    if (cid.toText) return cid.toText();
+    // Handle raw Candid opt format: [] | [Principal]
+    if (Array.isArray(cid)) return cid.length > 0 ? (cid[0].toText ? cid[0].toText() : cid[0].toString()) : null;
+    return cid.toString();
+  }
+
   // Current table info - stores the canister ID of the table we joined
   let currentTableInfo = $state(null);
   // Note: tableActor is NOT $state because Svelte 5's reactive proxy breaks JS Proxy objects
@@ -148,10 +158,9 @@
       // For tables that have a canister_id, try to fetch their player counts
       for (let i = 0; i < lobbyTables.length; i++) {
         const t = lobbyTables[i];
-        if (t.canister_id && t.canister_id.length > 0) {
+        const cid = getCanisterId(t.canister_id);
+        if (cid) {
           try {
-            // Convert Principal to string if needed
-            const cid = t.canister_id[0].toText ? t.canister_id[0].toText() : t.canister_id[0].toString();
             const tActor = createTableActorProxy(cid);
             const [playerCount, maxPlayers] = await Promise.all([
               tActor.get_player_count(),
@@ -194,15 +203,14 @@
 
   async function joinTable(tableInfo) {
     // Check if the table has a canister assigned
-    if (!tableInfo.canister_id || tableInfo.canister_id.length === 0) {
+    const canisterId = getCanisterId(tableInfo.canister_id);
+    if (!canisterId) {
       error = "This table doesn't have an assigned canister yet";
       return;
     }
 
     // Store the table info and create an actor for this specific table canister
     currentTableInfo = tableInfo;
-    // Convert Principal to string if needed
-    const canisterId = tableInfo.canister_id[0].toText ? tableInfo.canister_id[0].toText() : tableInfo.canister_id[0].toString();
     tableActor = createTableActorProxy(canisterId);
 
     view = 'table';
@@ -835,7 +843,7 @@
 <!-- Hand History Modal -->
 {#if showHandHistory}
   <HandHistory
-    tableId={currentTableInfo?.canister_id?.[0]}
+    tableId={currentTableInfo?.canister_id}
     {tableActor}
     handNumber={tableState?.hand_number || 0}
     onClose={() => { showHandHistory = false; }}
@@ -845,7 +853,7 @@
 {#if showDepositModal}
   <DepositModal
     {tableActor}
-    tableCanisterId={currentTableInfo?.canister_id?.[0]}
+    tableCanisterId={currentTableInfo?.canister_id}
     currency={getTableCurrency(currentTableInfo)}
     onClose={() => { showDepositModal = false; }}
     onDepositSuccess={() => { refreshAllBalances(); loadTableState(); }}

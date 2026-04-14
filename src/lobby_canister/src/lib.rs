@@ -574,14 +574,14 @@ fn add_doge_headsup_table(doge_table_canister: Principal) -> Result<(), String> 
         let mut tables = tables.borrow_mut();
 
         // DOGE Table: Heads Up - 10/20 DOGE blinds
-        // Buy-in: 500-5000 DOGE
+        // Buy-in: 20-5000 DOGE
         tables.insert(next_id, TableInfo {
             id: next_id,
             canister_id: Some(doge_table_canister),
             config: TableConfig {
                 small_blind: 1_000_000_000,          // 10 DOGE
                 big_blind: 2_000_000_000,             // 20 DOGE
-                min_buy_in: 50_000_000_000,           // 500 DOGE
+                min_buy_in: 2_000_000_000,            // 20 DOGE
                 max_buy_in: 500_000_000_000,          // 5000 DOGE
                 max_players: 2,
                 ante: 0,
@@ -631,6 +631,22 @@ fn update_table_name(table_id: u64, new_name: String) -> Result<(), String> {
         let mut tables = tables.borrow_mut();
         let table = tables.get_mut(&table_id).ok_or("Table not found")?;
         table.name = new_name;
+        Ok(())
+    })
+}
+
+/// Update a table's config (admin only)
+#[ic_cdk::update]
+fn update_table_config(table_id: u64, config: TableConfig) -> Result<(), String> {
+    if !is_admin() {
+        return Err("Unauthorized: admin only".to_string());
+    }
+
+    TABLES.with(|tables| {
+        let mut tables = tables.borrow_mut();
+        let table = tables.get_mut(&table_id).ok_or("Table not found")?;
+        table.currency = config.currency.clone();
+        table.config = config;
         Ok(())
     })
 }
