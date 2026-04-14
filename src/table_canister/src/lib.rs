@@ -6146,10 +6146,11 @@ async fn check_doge_deposit() -> Result<Vec<DogeDepositStatus>, String> {
         network: DogeNetwork::Mainnet,
     };
 
-    let result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::call(
+    let result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::api::call::call_with_payment128(
         dogecoin_canister,
         "dogecoin_get_utxos",
         (utxo_args,),
+        10_000_000_000, // 10B cycles required by Dogecoin canister
     ).await;
 
     let (utxo_response,) = result.map_err(|(code, msg)| format!("Dogecoin canister error: {:?} - {}", code, msg))?;
@@ -6279,10 +6280,11 @@ async fn withdraw_doge(destination: String, amount: u64) -> Result<String, Strin
         network: DogeNetwork::Mainnet,
     };
 
-    let utxo_result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::call(
+    let utxo_result: Result<(DogeGetUtxosResponse,), _> = ic_cdk::api::call::call_with_payment128(
         dogecoin_canister,
         "dogecoin_get_utxos",
         (utxo_args,),
+        10_000_000_000, // 10B cycles required by Dogecoin canister
     ).await;
     let (utxo_response,) = utxo_result.map_err(|(code, msg)| format!("UTXO query error: {:?} - {}", code, msg))?;
 
@@ -6436,10 +6438,11 @@ async fn withdraw_doge(destination: String, amount: u64) -> Result<String, Strin
         network: DogeNetwork::Mainnet,
     };
 
-    let send_result: Result<((),), _> = ic_cdk::call(
+    let send_result: Result<((),), _> = ic_cdk::api::call::call_with_payment128(
         dogecoin_canister,
         "dogecoin_send_transaction",
         (send_args,),
+        10_000_000_000, // 10B cycles required by Dogecoin canister
     ).await;
 
     if let Err((code, msg)) = send_result {
